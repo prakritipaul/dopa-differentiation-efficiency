@@ -1,0 +1,21 @@
+[project]
+name = "pluricon-prototype"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Prakriti Chacha", email = "pprakriti16@gmail.com" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "h5py>=3.16.0",
+    "matplotlib>=3.11.1",
+    "pandas>=2.3.3",
+]
+
+[project.scripts]
+pluricon-prototype = "pluricon_prototype:main"
+
+[build-system]
+requires = ["uv_build>=0.12.9,<0.13.0"]
+build-backend = "uv_build"
