@@ -1,0 +1,2 @@
+target,r_n_cells,p_n_cells,r_mean_total_counts,p_mean_total_counts,r_mean_n_genes_detected,p_mean_n_genes_detected,eta_sq_pool
+diff_efficiency,-0.12164426244615234,0.12664883545344907,0.03826634525350765,0.6320179335216413,0.09741634351473402,0.22186309411017813,0.1271653533066019

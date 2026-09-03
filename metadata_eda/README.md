@@ -275,6 +275,56 @@ predictors of D52 efficiency.
 - **`technical_covariate_analysis_plan.md`** — the design notes/plan
   written before implementing this and `007`.
 
+## From `009_d52_outcome_label.py`
+
+The D52 outcome label: **differentiation efficiency** = fraction of a
+cell line's D52 cells that are DA (dopaminergic) or Sert (serotonergic)
+neurons, the two mature "successfully differentiated" types — matching
+the paper's own definition (`fig2b_and_heatmap_extended.ipynb`:
+`diff_efficiency = DA_D52 + Sert_D52`). DA and Sert are combined into one
+binary indicator *before* computing proportions/SE (not two proportions
+summed afterward), since they're mutually exclusive outcomes of the same
+per-cell draw. Otherwise identical methodology to `004`: binomial
+proportion + SE per `(cell_line, pool)`, restricted to the 138 qualifying
+lines, two-stage pool-then-line averaging with SE propagation for
+multi-pool lines. Reuses `004`'s `compute_pool_level_proportions_and_se`
+and `collapse_to_line_level` directly (via `importlib`, same pattern as
+`008`).
+
+138 lines get a label; wide spread (0.012 to 0.922, mean 0.45), with a
+notable cluster of ~20 lines near 0 (essentially fail to produce DA/Sert
+at all) and a broad spread from there — plenty of variance for a
+downstream model to explain, and SE error bars are small relative to that
+spread by eye.
+
+- **`d52_diff_efficiency_label.csv`** — `cell_line`, `n_pools`,
+  `diff_efficiency`, `diff_efficiency_se`.
+- **`plot_d52_diff_efficiency.png`** — sorted per-line values with SE
+  error bars, and a histogram of the distribution.
+
+## From `010_d52_label_technical_covariates.py`
+
+Same technical-covariate check `008` ran on the D11 features, applied to
+the D52 `diff_efficiency` label — matters because a shared confound on
+both sides (a D11 feature *and* the D52 label) would let a "predictive"
+model learn the confound instead of real biology, regardless of whether
+either side looks confounded alone.
+
+**Good news: the label looks clean.** `diff_efficiency` has weak,
+non-significant correlations with D52 sequencing depth (`r=0.04`,
+`p=0.63`) and genes detected (`r=0.10`, `p=0.22`), and a much smaller
+`eta_sq_pool=0.13` than the D11 features saw (0.69-1.0). Notably, pool11
+(the severe D11 sequencing-depth outlier) is unremarkable here — its
+`diff_efficiency` box (median ~0.68, IQR 0.53-0.85) sits in the middle of
+the pack, not off on its own. Pool medians do vary somewhat (0.25-0.68
+across pools) but the boxes overlap heavily, consistent with the modest
+eta-squared rather than a dominant batch effect.
+
+- **`technical_covariate_correlations_d52_label.csv`** — the association
+  numbers above.
+- **`plot_d52_label_technical_covariates.png`** — scatter of
+  `diff_efficiency` vs. mean D52 sequencing depth, and a boxplot by pool.
+
 ## Regenerating
 
 From the repo root:
@@ -288,10 +338,12 @@ uv run python 005_d11_pca_features.py             # depends on 003's output CSV;
 uv run python 006_d11_pca_variance_vs_se.py        # depends on 005's per-cell-PC CSV
 uv run python 007_d11_cell_counts_per_line.py      # depends on 001 and 003's output CSVs
 uv run python 008_technical_covariate_associations.py  # depends on 003; slower (~1-2 min, recomputes uncorrected PCA)
+uv run python 009_d52_outcome_label.py             # depends on 003's output CSV
+uv run python 010_d52_label_technical_covariates.py  # depends on 003's output CSV
 ```
 
-All eight scripts write into this directory (creating it if needed) and
+All ten scripts write into this directory (creating it if needed) and
 read the source `.h5` files from the paths hardcoded in each script's
-`DATA_FILES`. `008` also imports functions directly from `002`/`004`/`005`
-via `importlib` (numbered modules aren't importable with a plain
-`import`) rather than duplicating their logic.
+`DATA_FILES`. `008`, `009`, and `010` also import functions directly from
+`002`/`004`/`005`/`008` via `importlib` (numbered modules aren't
+importable with a plain `import`) rather than duplicating their logic.
