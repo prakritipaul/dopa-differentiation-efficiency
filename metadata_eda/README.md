@@ -128,6 +128,47 @@ just counting noise?
   visually, the spread across lines is far wider than any individual
   error bar.
 
+## From `005_d11_pca_features.py`
+
+Third candidate feature: per-cell_line PCA coordinates from D11 single-cell
+expression. Pipeline: take all D11 cells -> use the file's existing
+log-normalized `X` (already normalized; no renormalization done) -> select
+2000 HVGs (genes binned into 20 bins by mean expression, top genes by
+within-bin z-scored dispersion — a simplified variant of Scanpy's
+`flavor='seurat'`, operating directly on log values) -> scale each HVG to
+zero mean/unit variance and clip at +/-10 -> PCA to 10 components -> every
+D11 cell gets `PC1..PC10` -> per cell line, mean PCs per `(cell_line,
+pool)` first, then mean of those pool-means (matching `004`'s averaging
+approach), restricted to the 138 lines in
+`qualifying_cell_line_pool_min10_per_timepoint.csv`.
+
+**Important caveat, found and corrected during this analysis:** `pool11`
+is a severe sequencing-depth batch outlier (~1,900 mean UMI/cell vs.
+~10,000-18,000 in every other pool). Fitting PCA on all D11 cells made PC1
+almost entirely a "is this pool11" indicator (17% of variance, every
+pool11 line pinned to one extreme, every other line near the mean) rather
+than a differentiation-relevant axis — and since 15 of `pool11`'s 16
+qualifying lines have no other qualifying pool, simply dropping `pool11`
+would have shrunk the feature table from 138 to 123 lines and mismatched
+the `004` feature table. Fix: HVG selection and PCA fitting (mean/variance
+for scaling, and the PCA components themselves) use only the 243,623
+non-`pool11` D11 cells; `pool11` cells are then *projected* into that
+learned space (`PCA.transform`, not `.fit_transform`) so all 138 lines
+still get PC coordinates. After the fix, PC1 explains only 5.4% of
+variance (vs. 17% before) with a smooth scree decay, and the PC1-PC2
+scatter of line-level means shows a continuous cloud, not a pool11
+cluster. A residual, much smaller batch signature remains on PC8 (0.85%
+of variance) where `pool11` lines still show higher spread — worth
+keeping in mind if using the later PCs for modeling.
+
+- **`d11_hvg_genes.csv`** — the 2000 selected HVGs (gene symbol, index,
+  mean, variance — from non-`pool11` cells).
+- **`d11_pca_variance_explained.csv`** — explained variance ratio per PC.
+- **`d11_pca_coords_per_line.csv`** — the 138-line x `(PC1..PC10)` feature
+  table.
+- **`plot_d11_pca_scree.png`** — explained variance ratio per PC.
+- **`plot_d11_pca_scatter.png`** — PC1 vs PC2 of the 138 line-level means.
+
 ## Regenerating
 
 From the repo root:
@@ -137,8 +178,9 @@ uv run python 001_eda.py
 uv run python 002_metadata_eda.py   # streams raw/X for QC metrics; slower (~1-2 min)
 uv run python 003_qualifying_cell_lines.py
 uv run python 004_d11_celltype_proportion_se.py   # depends on 003's output CSV
+uv run python 005_d11_pca_features.py             # depends on 003's output CSV; slower (~1-2 min)
 ```
 
-All four scripts write into this directory (creating it if needed) and
+All five scripts write into this directory (creating it if needed) and
 read the source `.h5` files from the paths hardcoded in each script's
 `DATA_FILES`.
