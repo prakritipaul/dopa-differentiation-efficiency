@@ -260,6 +260,13 @@ def main() -> None:
     pc_df = pd.concat([line_pool, pd.DataFrame(pcs, columns=pc_cols)], axis=1)
 
     qualifying = pd.read_csv(QUALIFYING_COMBOS_CSV)[["cell_line", "pool"]]
+
+    # Per-cell PCs, restricted to qualifying combos -- reused by
+    # 006_d11_pca_variance_vs_se.py to check these features the same way
+    # 004 checks cell type proportions (variance across lines vs. SE).
+    pc_df_qualifying = pc_df.merge(qualifying, on=["cell_line", "pool"], how="inner")
+    pc_df_qualifying.to_csv(OUT_DIR / "d11_pca_coords_per_cell_qualifying.csv", index=False)
+
     line_level = collapse_to_line_level(pc_df, pc_cols, qualifying)
     line_level.to_csv(OUT_DIR / "d11_pca_coords_per_line.csv", index=False)
 

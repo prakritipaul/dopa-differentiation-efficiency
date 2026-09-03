@@ -169,6 +169,112 @@ keeping in mind if using the later PCs for modeling.
 - **`plot_d11_pca_scree.png`** — explained variance ratio per PC.
 - **`plot_d11_pca_scatter.png`** — PC1 vs PC2 of the 138 line-level means.
 
+## From `006_d11_pca_variance_vs_se.py`
+
+Sanity check for the PCA feature, same idea as `004`'s check for cell type
+proportions but generalized from a binomial proportion to a continuous
+per-cell value: a line's `PC_k` feature is the mean of many single-cell
+`PC_k` values, so its standard error is the standard error of that mean,
+`SE_i = std(cell-level PC_k in line i) / sqrt(n_i)` (exactly analogous to
+`SE_i = sqrt(p_i*(1-p_i)/n_i)`, which is also an SE-of-a-mean, just of
+0/1-valued cells). Same two-stage pool-then-line averaging and SE
+propagation as `004`/`005`.
+
+Also adds an `icc` column: `icc = 1 - 1/variance_ratio`, a bounded (0-1)
+reframing of the same ratio (`observed_var` already includes averaged
+sampling noise, so `variance_ratio`'s "no signal" floor is 1, not 0; `icc`
+maps that to 0, and -> 1 for strong signal) — the same quantity as
+`variance_ratio`, just easier to read.
+
+**Result, and a caveat found while checking it:** every PC looks
+extremely reliable at face value (`variance_ratio` 24-2038x, `icc`
+0.96-0.9995) — but PC8 and PC9's numbers are almost entirely a residual
+`pool11` artifact (the sequencing-depth batch outlier from `005`):
+excluding the 16 pool11-derived lines drops their `variance_ratio` by
+30-60x (2038 -> 32, 1047 -> 49; see `variance_ratio_excl_pool11` /
+`icc_excl_pool11` columns and the sharp, isolated jump for pool11 lines in
+`plot_d11_pca_variance_vs_se.png`'s PC8/PC9 panels). This is expected: a
+technical batch that shifts every one of its cells the same way is
+*reliably different* by this test, indistinguishable from real biology
+using variance-vs-noise alone. PC1/PC2 are more robust (24 -> 12, 663 ->
+389 when excluding pool11) but still somewhat inflated. All PCs remain
+`>> 1` even excluding pool11 (12-390x), so all 10 look like real,
+reliable signal — just noting that the *size* of that reliability
+shouldn't be read at face value for PC8/PC9 specifically, and that this
+check only establishes reliability, not that a PC predicts D52 efficiency
+(a separate question for later cross-validated regression).
+
+- **`d11_pca_line_level_with_se.csv`** — per-line `n_pools` and, for each
+  PC, `{PC}_mean`/`{PC}_se` (the `p_i`/`SE_i` above).
+- **`d11_pca_variance_vs_se.csv`** — per-PC summary: `observed_std`,
+  `rms_se`, `variance_ratio`, `icc`, plus `variance_ratio_excl_pool11` /
+  `icc_excl_pool11`.
+- **`plot_d11_pca_variance_vs_se.png`** — one panel per PC, each line's
+  value sorted with an SE error bar.
+
+## From `007_d11_cell_counts_per_line.py`
+
+How many D11 cells does each cell line have — with a per-pool breakdown
+for lines profiled in more than one pool? Uses
+`cell_line_donor_pool_timepoint_n_cells.csv` (from `001`), so covers
+every D11 cell line (177), not just the 138 qualifying ones. Also flags
+which lines are among those 138, for cross-reference — a line can have
+plenty of D11 cells and still not qualify, since qualifying also requires
+>= 10 cells in the *same pool* at D30 and D52.
+
+- **`d11_cell_counts_per_line.csv`** — per line: `donor`, `n_pools_D11`,
+  `pool_breakdown_D11` (e.g. `pool4:2125, pool5:8321`),
+  `total_n_cells_D11`, `is_qualifying_138`. Sorted by
+  `total_n_cells_D11` descending. 25 of the 177 lines span more than one
+  pool at D11; totals range from 1 to 14,640 cells.
+- **`plot_d11_cell_counts_per_line.png`** — sorted bar chart, colored by
+  qualifying status.
+
+## From `008_technical_covariate_associations.py`
+
+Formalizes the ad hoc pool11 finding (`006`) into a systematic
+correlation/association screen. Recomputes the **uncorrected** PCA (fit on
+*all* D11 cells, i.e. the pre-`005`-fix version that pool11 dominated) and
+checks it — plus the `004` cell type proportions, which had never been
+checked this way — against technical covariates at the 159-combo
+granularity: `mean_total_counts`/`mean_n_genes_detected` (Pearson r, from
+`002`'s QC metrics), `n_cells` (Pearson r), and `pool` identity
+(eta-squared / one-way-ANOVA variance-explained — the direct
+generalization of "PC1 grouped by pool").
+
+**Headline result:** as expected, uncorrected PC1 is almost entirely
+explained by pool (`eta_sq_pool=0.999`) and strongly anti-correlated with
+sequencing depth (`r=-0.87` with `mean_total_counts`, `r=-0.91` with
+`mean_n_genes_detected`) — confirms the `005`/`006` pool11 story
+quantitatively. PC5 and PC7 also show strong pool associations
+(`eta_sq_pool` 0.87 and 0.83) not previously flagged; PC5's tracks
+sequencing depth the same way PC1's does (`r≈-0.88`), while PC7's doesn't
+(`r≈-0.03`) — a pool effect from something other than depth.
+
+**More important: the cell type proportions are substantially
+technical-covariate-confounded too**, which hadn't been checked before.
+`phat_FPP` and `phat_P_FPP` correlate strongly with sequencing depth
+(`r=0.73`/`r=-0.72` with `mean_total_counts`; `r=0.79`/`r=-0.75` with
+`mean_n_genes_detected`) and pool (`eta_sq_pool` 0.79 and 0.69) — likely
+because cell type calls are sensitive to capture depth (fewer marker
+genes detected per cell biases classification). `phat_NB` looks clean
+(`eta_sq_pool=0.03`, no significant correlations). This means the `004`
+proportions feature, while *reliable* (validated via ICC in `004`/`006`),
+is not free of the same technical confound found in the PCA feature —
+worth accounting for (e.g. as a covariate, or checking whether it
+survives controlling for pool/depth) before treating FPP/P_FPP as clean
+predictors of D52 efficiency.
+
+- **`technical_covariate_correlations_pca_uncorrected.csv`** — 10 PCs x
+  `{r, p}` per numeric covariate + `eta_sq_pool`.
+- **`technical_covariate_correlations_celltype_proportions.csv`** — same,
+  for the 3 D11 celltypes.
+- **`plot_technical_covariate_correlations.png`** — correlation heatmaps
+  (PCs and proportions vs. numeric covariates) and eta-squared-by-pool bar
+  charts.
+- **`technical_covariate_analysis_plan.md`** — the design notes/plan
+  written before implementing this and `007`.
+
 ## Regenerating
 
 From the repo root:
@@ -179,8 +285,13 @@ uv run python 002_metadata_eda.py   # streams raw/X for QC metrics; slower (~1-2
 uv run python 003_qualifying_cell_lines.py
 uv run python 004_d11_celltype_proportion_se.py   # depends on 003's output CSV
 uv run python 005_d11_pca_features.py             # depends on 003's output CSV; slower (~1-2 min)
+uv run python 006_d11_pca_variance_vs_se.py        # depends on 005's per-cell-PC CSV
+uv run python 007_d11_cell_counts_per_line.py      # depends on 001 and 003's output CSVs
+uv run python 008_technical_covariate_associations.py  # depends on 003; slower (~1-2 min, recomputes uncorrected PCA)
 ```
 
-All five scripts write into this directory (creating it if needed) and
+All eight scripts write into this directory (creating it if needed) and
 read the source `.h5` files from the paths hardcoded in each script's
-`DATA_FILES`.
+`DATA_FILES`. `008` also imports functions directly from `002`/`004`/`005`
+via `importlib` (numbered modules aren't importable with a plain
+`import`) rather than duplicating their logic.
