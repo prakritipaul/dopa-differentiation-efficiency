@@ -66,6 +66,21 @@ failure clump's true range). Trust this model for success/failure
 classification; don't trust the regression output as a precise efficiency
 estimate, especially for predicted failures.
 
+Visual confirmation in `plot_regression_diagnostics.png` /
+`plot_classification_diagnostics.png` (predicted-vs-true and residual
+scatter for regression; ROC curve, confusion matrix, and predicted-
+probability histogram for classification, all donor_grouped/nested/
+repeat 0). Two things visible there that the numbers alone didn't show:
+- Classification's predicted probabilities are almost perfectly bimodal
+  (failures near 0, successes near 1, almost nothing in between) --
+  directly mirrors the gap in the true label and is *why* AUC~0.94 is
+  achievable even though the regression signal is much weaker.
+- Within the success clump, regression residuals show a **systematic
+  bias, not just noise**: over-predicts around true~0.3-0.4, under-
+  predicts around true~0.8-0.9 -- the model compresses predictions
+  toward the middle of the success range (shrinkage/regression-to-the-
+  mean) rather than tracking the full spread.
+
 ## Pool-correction dropped
 
 Investigated (with an independent Codex review) why pool-correction cut
