@@ -21,3 +21,13 @@ pluricon-prototype = "pluricon_prototype:main"
 [build-system]
 requires = ["uv_build>=0.12.9,<0.13.0"]
 build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+markers = [
+    "slow: streams real single-cell data / runs the extraction pipeline (deselect with -m 'not slow')",
+]

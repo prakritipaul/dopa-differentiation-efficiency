@@ -20,3 +20,22 @@ Python version is pinned via `.python-version` to 3.11.
 ## Structure
 
 - `src/pluricon_prototype/` — the package. `__init__.py` currently defines `main()`, wired up as the `pluricon-prototype` console script in `pyproject.toml` (`[project.scripts]`).
+
+## Planning workflow: get Codex's second opinion
+
+Whenever we're finalizing a non-trivial technical or methodology decision
+(e.g. a modeling approach, a CV/train-test scheme, an interpretation of
+results, a statistical method) — not for small/obvious implementation
+choices — do this before proceeding with implementation:
+
+1. State your own opinion/recommendation first, with reasoning.
+2. Get Codex's independent opinion on the same question via the
+   `codex:rescue` skill (see `.claude/plugins/openai-codex` if present).
+   Pose the question to Codex *without* revealing your own answer first,
+   so its take is genuinely independent, not just agreement colored by
+   what you said.
+3. Present a comparison table (your take vs. Codex's take) plus bullet
+   points calling out where you agree, where you disagree, and why —
+   before implementing anything based on the discussion.
+
+This applies by default without the user needing to ask each time.
