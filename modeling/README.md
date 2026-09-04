@@ -40,18 +40,24 @@ with target rank in this range). This changed two decisions:
 Headline (donor_grouped, nested CV, **no pool-correction** -- see
 "Pool-correction dropped" below):
 
+The pre-registration named a specific model per task (**ridge** /
+**logistic_l2**), so those are the headline numbers. The L1 variants
+scored better, but quoting them as "the" headline would be exactly the
+cherry-picking the pre-registration exists to prevent -- they are
+reported below as secondary.
+
 | task | model | key metrics |
 |---|---|---|
-| regression | lasso | MAE=0.135, RMSE=0.172, **R2=0.668 ± 0.015** |
-| regression | ridge | MAE=0.138, RMSE=0.176, R2=0.653 ± 0.021 |
-| classification | logistic_l1 | **ROC-AUC=0.951 ± 0.008**, PR-AUC=0.970, balanced_acc=0.913 |
-| classification | logistic_l2 | ROC-AUC=0.943 ± 0.008, PR-AUC=0.965, balanced_acc=0.906 |
+| regression (**headline**) | ridge | MAE=0.138, RMSE=0.176, **R2=0.653 ± 0.021** |
+| regression (secondary) | lasso | MAE=0.135, RMSE=0.172, R2=0.668 ± 0.015 |
+| classification (**headline**) | logistic_l2 | **ROC-AUC=0.943 ± 0.008**, PR-AUC=0.965, balanced_acc=0.906 |
+| classification (secondary) | logistic_l1 | ROC-AUC=0.951 ± 0.008, PR-AUC=0.970, balanced_acc=0.913 |
 
 D11 features are clearly predictive of D52 differentiation efficiency,
 even under the strict donor-grouped (never-seen-donor) test. Going from
 the 5-repeat first pass to the full 10-repeat + LOCO/LODO run barely
-moved these numbers (R2 0.667->0.668, AUC 0.949->0.951) -- the estimates
-were already stable.
+moved these numbers (secondary lasso R2 0.667->0.668, secondary L1 AUC
+0.949->0.951) -- the estimates were already stable.
 
 **All four schemes, nested CV:**
 
@@ -131,9 +137,11 @@ after seeing results) as: fewest PCs first, then strongest regularization
 (larger `alpha` for ridge/lasso; smaller `C` for logistic, since `C` is
 inverse regularization strength).
 
-Implementation note: the tolerance band uses the std across repeats as a
-conservative proxy for the standard error of the mean, since the summary
-tables don't carry the exact repeat count. Effect here: classification
+Implementation note: the tolerance band is SD_across_repeats /
+sqrt(n_repeats), with n_repeats read from the fold-assignment data. (An
+earlier version used the raw SD, which is ~3x too wide at 10 repeats --
+see "Corrections from the audit". Fixed; selections happened not to
+change.) Effect here: classification
 went from the raw argmax's k=4 to k=2 -- a materially simpler model for
 statistically indistinguishable performance.
 
@@ -141,14 +149,14 @@ statistically indistinguishable performance.
 
 | Feature | Univariate ρ | Coef | Sel. freq | LOCO Δ | Perm Δ | SHAP | Technical covariate |
 |---|---|---|---|---|---|---|---|
-| phat_FPP | 0.19 | -0.045 | 0.88 | -0.0015 | 0.035 (grp) | 0.003 | High (η²=0.76) |
-| **phat_NB** | **-0.73** | +0.067 | 1.00 | +0.0017 | 0.035 (grp) | 0.003 | **Low (η²=0.04)** |
+| phat_FPP | 0.19 | -0.045 | 0.88 | -0.0015 | 0.035 (grp) | 0.033 | High (η²=0.76) |
+| **phat_NB** | **-0.73** | +0.067 | 1.00 | +0.0017 | 0.035 (grp) | 0.052 | **Low (η²=0.04)** |
 | phat_P_FPP | 0.34 | reference | -- | -0.0007 (grp) | 0.035 (grp) | -- | High (0.65) |
-| PC1 | 0.56 | 0.004 | 0.80 | -0.0024 | 0.005 | 0.005 | Moderate (0.49) |
-| **PC2** | 0.67 | **+0.312** | 1.00 | **+0.0186** | **0.176** | **1.17** | **High (η²=0.76)** |
-| PC3 | -0.22 | -0.251 | 1.00 | +0.0141 | 0.146 | 0.44 | Moderate (0.50) |
-| PC4 | 0.53 | 0.044 | 1.00 | -0.0009 | 0.015 | 0.046 | Moderate (0.45) |
-| PC5 | -0.02 | -0.052 | 1.00 | +0.0016 | 0.009 | 0.068 | High (0.79) |
+| PC1 | 0.56 | 0.004 | 0.80 | -0.0024 | 0.005 | 0.003 | Moderate (0.49) |
+| **PC2** | 0.67 | **+0.312** | 1.00 | **+0.0186** | **0.176** | 0.247 | **High (η²=0.76)** |
+| PC3 | -0.22 | -0.251 | 1.00 | +0.0141 | 0.146 | 0.189 | Moderate (0.50) |
+| PC4 | 0.53 | 0.044 | 1.00 | -0.0009 | 0.015 | 0.035 | Moderate (0.45) |
+| PC5 | -0.02 | -0.052 | 1.00 | +0.0016 | 0.009 | 0.040 | High (0.79) |
 
 **Classification (logistic_l1, one-SE-selected k=2** -- notably simpler
 than the raw argmax's k=4, the one-SE rule working as intended):
@@ -156,10 +164,10 @@ than the raw argmax's k=4, the one-SE rule working as intended):
 | Feature | Univariate ρ | Coef | Sel. freq | LOCO Δ | Perm Δ | SHAP | Technical covariate |
 |---|---|---|---|---|---|---|---|
 | phat_FPP | 0.20 | 0.0 (regularized out) | 0.00 | 0.0 | 0.277 (grp) | 0.0 | High (0.76) |
-| **phat_NB** | **-0.73** | **-1.535** | 0.90 | **+0.051** | **0.277 (grp)** | 0.068 | **Low (η²=0.04)** |
+| **phat_NB** | **-0.73** | **-1.535** | 0.90 | **+0.051** | **0.277 (grp)** | **1.190** | **Low (η²=0.04)** |
 | phat_P_FPP | 0.41 | reference | -- | **+0.064** (grp) | 0.277 (grp) | -- | High (0.65) |
 | PC1 | 0.58 | 0.0 (regularized out) | 0.10 | 0.0 | 0.000 | 0.0 | Moderate (0.49) |
-| PC2 | 0.59 | +0.648 | 0.82 | +0.004 | 0.080 | 2.44 | High (0.76) |
+| PC2 | 0.59 | +0.648 | 0.82 | +0.004 | 0.080 | 0.514 | High (0.76) |
 
 ("grp" = grouped: permutation always shuffles the 3 proportions as one
 block, since permuting one alone implies an impossible third coordinate.)
@@ -180,10 +188,14 @@ Three findings:
    individual LOCO contribution for classification, and by far the
    cleanest technically (η²=0.04, the only "Low" feature in either
    table). The one result to lean on biologically.
-2. **PC2 dominates regression but is heavily pool-confounded**
-   (η²=0.76) -- largest coefficient, SHAP, and LOCO delta, but its
-   predictive power may be substantially technical rather than
-   biological. Treat PC2-based claims cautiously.
+2. **PC2 is the strongest PC for regression but is heavily
+   pool-confounded** (η²=0.76) -- largest coefficient, permutation and
+   LOCO delta for regression, but its predictive power may be
+   substantially technical rather than biological. Treat PC2-based claims
+   cautiously. (Note: an earlier version of this README claimed PC2 also
+   dominated SHAP; that was a units bug -- see "Corrections from the
+   audit" below. Corrected, `phat_NB` has the larger SHAP value for
+   classification, 1.19 vs PC2's 0.51.)
 3. **Proportions matter greatly for classification, almost not at all
    for regression** -- dropping both costs +0.064 AUC (largest single
    effect in either table) but costs regression ~nothing (-0.0007).
@@ -237,6 +249,47 @@ multivariately despite being marginally useless -- classic suppressor
 behavior (correlating with noise in the other PCs so the model can cancel
 it out). Its own LOCO (+0.0016) and permutation (0.0085) deltas are
 small, consistent with a minor supporting role rather than a driver.
+
+## Corrections from the audit
+
+After the analysis was complete, an independent Codex correctness audit
+(implementation-vs-intent, not methodology) checked every stated design
+intention across `folds.py`, `features.py`, `harness.py`,
+`feature_importance.py`, and `run_experiment.py`. Most passed. Three real
+defects were found and fixed; all three are recorded here rather than
+quietly patched, since two of them changed reported numbers.
+
+1. **SHAP mixed unit systems (changed a conclusion).** Coefficients come
+   from a model fit on standardized features (units: per 1 SD), but they
+   were multiplied by *raw* `(x - mean)` deviations. Every contribution
+   was therefore scaled by that feature's raw SD, systematically
+   inflating wide-scale features (PCs, raw SD ~1-9) and deflating narrow
+   ones (proportions, raw SD ~0.05) -- exactly the comparison the column
+   exists to make. Fixed to use standardized deviations. **This reversed
+   the classification SHAP ranking**: `phat_NB` went 0.068 -> 1.190 and
+   PC2 went 2.438 -> 0.514, so `phat_NB` now leads rather than trailing
+   PC2 by ~36x. It strengthens the `phat_NB` finding and weakens the PC2
+   one; the earlier README claim that PC2 dominated SHAP was wrong.
+2. **The "one-SE rule" used one SD, not one SE.** ~3x too wide at 10
+   repeats, so it selected simpler models than a real one-SE rule would.
+   Fixed to SD/sqrt(n_repeats). Verified the tolerance genuinely narrowed
+   (lasso: 5 configs within tolerance -> 1), but the *selections* happened
+   not to change (k=5 regression, k=2 classification both still qualify),
+   so no downstream numbers moved.
+3. **`select_headline` didn't filter by model, and the reporting
+   compounded it.** The pre-registration named ridge / logistic_l2, but
+   the function returned all models and the better-scoring non-registered
+   models (lasso R2=0.668, logistic_l1 AUC=0.951) were being quoted as
+   "the" headline -- the exact cherry-picking the pre-registration exists
+   to prevent. Fixed to filter on the pre-registered model; headline
+   numbers are now ridge R2=0.653 and logistic_l2 AUC=0.943, with the L1
+   variants reported as secondary.
+
+Feature-importance tables are now produced for **all four** models
+(`feature_importance_table_{task}_{model}.csv`) rather than just the L1
+pair, for the same reason. The L1 tables remain the more informative ones
+(only L1 produces sparsity, so `regularized_to_zero` /
+`selection_frequency` are meaningful), but both are reported.
 
 ## Pool-correction dropped
 

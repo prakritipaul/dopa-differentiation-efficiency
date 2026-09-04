@@ -124,22 +124,33 @@ def _simplicity_key(model: str, k: int, params: dict) -> tuple:
 
 
 def select_winning_config_one_se(
-    results_csv: Path, model: str, scheme: str, metric: str, minimize: bool
+    results_csv: Path,
+    model: str,
+    scheme: str,
+    metric: str,
+    minimize: bool,
+    n_repeats: int | None = None,
 ) -> tuple[int, dict]:
-    """Simplest (k, params) within 1 SE of the flat-CV grid's best mean
-    score, rather than the raw (noisy, at n=138 across 55 candidates)
-    argmax. Uses the already-computed std across repeats as the
-    tolerance band (a conservative proxy for the standard error of the
-    mean, since exact n_repeats isn't tracked in the summary table)."""
+    """Simplest (k, params) within one STANDARD ERROR of the flat-CV
+    grid's best mean score, rather than the raw (noisy, at n=138 across
+    55 candidates) argmax.
+
+    SE = SD_across_repeats / sqrt(n_repeats). An earlier version used the
+    raw SD as the tolerance, which is ~sqrt(n_repeats) times too wide
+    (~3x at 10 repeats) and therefore selected simpler models than a real
+    one-SE rule would. n_repeats is read from the fold-assignment data
+    when not supplied."""
     df = pd.read_csv(results_csv)
     flat = df[(df["tuning"] == "flat") & (df["model"] == model) & (df["scheme"] == scheme)].copy()
 
-    mean_col, std_col = f"{metric}_mean" if not metric.endswith("_mean") else metric, None
     mean_col = metric if metric.endswith("_mean") else f"{metric}_mean"
     std_col = mean_col.replace("_mean", "_std")
 
+    if n_repeats is None:
+        n_repeats = _infer_n_repeats(scheme)
+
     best_row = flat.loc[flat[mean_col].idxmin() if minimize else flat[mean_col].idxmax()]
-    tolerance = best_row[std_col]
+    tolerance = best_row[std_col] / np.sqrt(n_repeats)
     if minimize:
         within_tol = flat[flat[mean_col] <= best_row[mean_col] + tolerance]
     else:
@@ -159,6 +170,17 @@ def _parse_param_str(s: str) -> dict:
         key, val = part.split("=")
         out[key] = float(val)
     return out
+
+
+def _infer_n_repeats(scheme: str, fold_features_csv: Path | None = None) -> int:
+    """Number of distinct repeats for a scheme, needed to turn the
+    across-repeat SD into a standard error. LOCO/LODO have a single
+    repeat by construction."""
+    path = fold_features_csv or (OUT_DIR / "fold_features_D11_full.csv")
+    if not path.exists():
+        path = OUT_DIR / "fold_features_D11.csv"
+    ff = pd.read_csv(path, usecols=["scheme", "repeat"])
+    return int(ff.loc[ff["scheme"] == scheme, "repeat"].nunique())
 
 
 # ---------------------------------------------------------------------------
@@ -384,11 +406,20 @@ def paired_permutation_deltas(
 
 
 def compute_shap_like(full_fit_coefs: pd.Series, feature_names: list[str]) -> pd.Series:
+    """mean |coef_j * z_ij| where z is the STANDARDIZED feature value.
+
+    The coefficients being reported come from a model fit on
+    StandardScaler output, so their units are "per 1 SD of the feature".
+    They must therefore be multiplied by standardized deviations, not raw
+    ones -- an earlier version used raw (x - mean), which scaled every
+    contribution by that feature's raw SD and so systematically inflated
+    wide-scale features (PCs, raw SD ~1-9) relative to narrow ones
+    (proportions, raw SD ~0.05). Using z = (x - mean)/std puts every
+    feature on the same footing, which is the whole point of the column."""
     features = load_full_fit_features()
-    means = features[feature_names].mean()
-    contributions = pd.DataFrame(
-        {f: full_fit_coefs[f] * (features[f] - means[f]) for f in feature_names}
-    )
+    subset = features[feature_names]
+    z = (subset - subset.mean()) / subset.std(ddof=0)
+    contributions = z.mul(full_fit_coefs[feature_names], axis=1)
     return contributions.abs().mean()
 
 
@@ -479,19 +510,29 @@ def run_for_model(
     return table
 
 
-def main(fold_features_csv: Path = OUT_DIR / "fold_features_D11.csv") -> None:
-    run_for_model(
-        fold_features_csv, OUT_DIR / "results_regression.csv", "lasso", "regression", "donor_grouped", "mae_mean", True
-    )
-    run_for_model(
-        fold_features_csv,
-        OUT_DIR / "results_classification.csv",
-        "logistic_l1",
-        "classification",
-        "donor_grouped",
-        "roc_auc_mean",
-        False,
-    )
+def main(fold_features_csv: Path = OUT_DIR / "fold_features_D11_full.csv") -> None:
+    """All four models, not just the L1 pair.
+
+    The L1 variants (lasso, logistic_l1) are the more informative ones
+    here -- only they produce sparsity, so `regularized_to_zero` and
+    `selection_frequency` are meaningful; ridge/L2 never zero anything.
+    But ridge/logistic_l2 are the PRE-REGISTERED performance models, so
+    both are reported to avoid any appearance of picking whichever model
+    told the nicer story."""
+    for model_name in ("lasso", "ridge"):
+        run_for_model(
+            fold_features_csv, OUT_DIR / "results_regression.csv", model_name, "regression", "donor_grouped", "mae_mean", True
+        )
+    for model_name in ("logistic_l1", "logistic_l2"):
+        run_for_model(
+            fold_features_csv,
+            OUT_DIR / "results_classification.csv",
+            model_name,
+            "classification",
+            "donor_grouped",
+            "roc_auc_mean",
+            False,
+        )
 
 
 if __name__ == "__main__":

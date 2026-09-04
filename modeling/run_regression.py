@@ -15,9 +15,15 @@ def main() -> None:
     out_path = OUT_DIR / "results_regression.csv"
     results.to_csv(out_path, index=False)
 
-    headline = select_headline(results)
-    print(f"=== HEADLINE ({HEADLINE['scheme']}, {HEADLINE['tuning']}, pool_correction={HEADLINE['pool_correction']}) ===")
-    print(headline[["model", "mae_mean", "mae_std", "rmse_mean", "rmse_std", "r2_mean", "r2_std"]].to_string(index=False))
+    cols = ["model", "mae_mean", "mae_std", "rmse_mean", "rmse_std", "r2_mean", "r2_std"]
+    headline = select_headline(results, task="regression")
+    print(f"=== HEADLINE (pre-registered: {HEADLINE['scheme']}, {HEADLINE['tuning']}, ridge) ===")
+    print(headline[cols].to_string(index=False))
+
+    other = select_headline(results)
+    other = other[~other.index.isin(headline.index)]
+    print("\n--- same config, other model family (secondary, NOT the headline) ---")
+    print(other[cols].to_string(index=False))
 
     print(f"\nSaved full robustness grid ({len(results)} rows) to {out_path}")
 

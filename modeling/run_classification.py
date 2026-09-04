@@ -16,13 +16,18 @@ def main() -> None:
     out_path = OUT_DIR / "results_classification.csv"
     results.to_csv(out_path, index=False)
 
-    headline = select_headline(results)
-    print(f"=== HEADLINE ({HEADLINE['scheme']}, {HEADLINE['tuning']}, pool_correction={HEADLINE['pool_correction']}) ===")
-    print(
-        headline[
-            ["model", "roc_auc_mean", "roc_auc_std", "pr_auc_mean", "pr_auc_std", "balanced_accuracy_mean", "balanced_accuracy_std"]
-        ].to_string(index=False)
-    )
+    cols = [
+        "model", "roc_auc_mean", "roc_auc_std", "pr_auc_mean", "pr_auc_std",
+        "balanced_accuracy_mean", "balanced_accuracy_std",
+    ]
+    headline = select_headline(results, task="classification")
+    print(f"=== HEADLINE (pre-registered: {HEADLINE['scheme']}, {HEADLINE['tuning']}, logistic_l2) ===")
+    print(headline[cols].to_string(index=False))
+
+    other = select_headline(results)
+    other = other[~other.index.isin(headline.index)]
+    print("\n--- same config, other model family (secondary, NOT the headline) ---")
+    print(other[cols].to_string(index=False))
 
     print(f"\nSaved full robustness grid ({len(results)} rows) to {out_path}")
 

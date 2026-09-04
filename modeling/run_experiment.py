@@ -41,8 +41,13 @@ CORRECTIONS = [False]
 
 # Pre-registered before looking at results (modeling/README.md "Results
 # distillation") -- decided in advance to avoid cherry-picking the
-# best-looking config after the fact.
+# best-looking config after the fact. The pre-registration named a
+# specific MODEL per task (ridge / logistic_l2), so select_headline must
+# filter on it: an earlier version didn't, which let the better-scoring
+# non-pre-registered model (lasso) get quoted as "the" headline -- exactly
+# the cherry-picking the pre-registration exists to prevent.
 HEADLINE = {"scheme": "donor_grouped", "tuning": "nested", "pool_correction": False}
+HEADLINE_MODEL = {"regression": "ridge", "classification": "logistic_l2"}
 
 
 def run_all(task: str, fold_features_csv: Path = FOLD_FEATURES_CSV) -> pd.DataFrame:
@@ -65,9 +70,16 @@ def run_all(task: str, fold_features_csv: Path = FOLD_FEATURES_CSV) -> pd.DataFr
     return pd.concat(summaries, ignore_index=True)
 
 
-def select_headline(results: pd.DataFrame) -> pd.DataFrame:
-    return results[
+def select_headline(results: pd.DataFrame, task: str | None = None) -> pd.DataFrame:
+    """The single pre-registered configuration. Pass `task` to also apply
+    the pre-registered model filter (ridge / logistic_l2); without it the
+    other model family is returned alongside, which is fine for a
+    secondary comparison but must not be quoted as "the" headline."""
+    selected = results[
         (results["scheme"] == HEADLINE["scheme"])
         & (results["tuning"] == HEADLINE["tuning"])
         & (results["pool_correction"] == HEADLINE["pool_correction"])
     ]
+    if task is not None:
+        selected = selected[selected["model"] == HEADLINE_MODEL[task]]
+    return selected
