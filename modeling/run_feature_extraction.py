@@ -25,9 +25,16 @@ cell of a held-out line is excluded regardless of pool, and the extra
 cells belong to lines that are never predicted on. Using additional
 unlabeled cells to fit a basis is a legitimate (transductive) choice and
 gives the basis more data. It is recorded here rather than silently
-assumed. Restricting the fit to qualifying combos would require
-re-extracting all 258 folds and would change every PC-derived number; not
-done, since there is no correctness argument for it.
+assumed.
+
+Both variants are now produced and kept side by side for comparison:
+`restrict_fit_to_qualifying=True` limits the fit to the qualifying combos
+(226,874 cells vs 253,381 total), writing to a suffixed output. Note the
+qualifying filter is a property of the (cell_line, pool) PAIR across all
+three timepoints, so the strict variant also drops 1,109 D11 cells from 4
+combos whose LINE is among the 138 but whose pool fails on D30/D52
+availability -- e.g. HPSI0714i-kute_5/pool13 has 497 good D11 cells but
+zero at D30.
 
 Output: one row per (scheme, repeat, fold, cell_line, pool) combo, with
 PC1..PC10 (pool-level means), phat_FPP/phat_NB/phat_P_FPP, and a `split`
@@ -71,7 +78,15 @@ def main(
     n_repeats: int = N_REPEATS,
     out_suffix: str = "",
     include_loco_lodo: bool = True,
+    restrict_fit_to_qualifying: bool = False,
 ) -> None:
+    """restrict_fit_to_qualifying: when True, the HVG/PCA fit is limited to
+    cells in the qualifying (cell_line, pool) combos -- the study
+    population the features are actually computed on. When False (the
+    default, preserving the original run) cells outside those combos also
+    contribute to the fit; see this module's docstring. Use a distinct
+    out_suffix so the two variants sit side by side rather than one
+    overwriting the other."""
     lines = load_lines_with_label()
     folds = {
         "plain": plain_repeated_kfold(lines, n_splits, n_repeats, SEED),
@@ -100,7 +115,10 @@ def main(
             fold_count += 1
             t0 = time.time()
             held_out = set(f.test_lines)
-            pcs = compute_pca_features_for_fold("D11", held_out, meta=meta, n_pcs=N_PCS)
+            pcs = compute_pca_features_for_fold(
+                "D11", held_out, meta=meta, n_pcs=N_PCS,
+                restrict_to_combos=qualifying if restrict_fit_to_qualifying else None,
+            )
             pcs_q = pcs.merge(qualifying, on=["cell_line", "pool"], how="inner")
 
             pc_cols = [c for c in pcs_q.columns if c.startswith("PC")]

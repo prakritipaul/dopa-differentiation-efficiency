@@ -457,7 +457,8 @@ def bucket_eta_sq(x: float) -> str:
 
 
 def run_for_model(
-    fold_features_csv: Path, results_csv: Path, model_name: str, task: str, scheme: str, metric: str, minimize: bool
+    fold_features_csv: Path, results_csv: Path, model_name: str, task: str, scheme: str, metric: str, minimize: bool,
+    out_suffix: str = "",
 ) -> pd.DataFrame:
     model_spec = next(m for m in models_for_task(task) if m.name == model_name)
     k, params = select_winning_config_one_se(results_csv, model_name, scheme, metric, minimize)
@@ -507,14 +508,14 @@ def run_for_model(
         )
 
     table = pd.DataFrame(rows)
-    out_csv = OUT_DIR / f"feature_importance_table_{task}_{model_name}.csv"
+    out_csv = OUT_DIR / f"feature_importance_table_{task}_{model_name}{out_suffix}.csv"
     table.to_csv(out_csv, index=False)
     print(table.to_string(index=False))
     print(f"Saved {out_csv}\n")
     return table
 
 
-def main(fold_features_csv: Path = OUT_DIR / "fold_features_D11_full.csv") -> None:
+def main(fold_features_csv: Path = OUT_DIR / "fold_features_D11_full.csv", out_suffix: str = "") -> None:
     """All four models, not just the L1 pair.
 
     The L1 variants (lasso, logistic_l1) are the more informative ones
@@ -525,19 +526,29 @@ def main(fold_features_csv: Path = OUT_DIR / "fold_features_D11_full.csv") -> No
     told the nicer story."""
     for model_name in ("lasso", "ridge"):
         run_for_model(
-            fold_features_csv, OUT_DIR / "results_regression.csv", model_name, "regression", "donor_grouped", "mae_mean", True
+            fold_features_csv, OUT_DIR / f"results_regression{out_suffix}.csv", model_name, "regression",
+            "donor_grouped", "mae_mean", True, out_suffix=out_suffix,
         )
     for model_name in ("logistic_l1", "logistic_l2"):
         run_for_model(
             fold_features_csv,
-            OUT_DIR / "results_classification.csv",
+            OUT_DIR / f"results_classification{out_suffix}.csv",
             model_name,
             "classification",
             "donor_grouped",
             "roc_auc_mean",
             False,
+            out_suffix=out_suffix,
         )
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--suffix", default="", help="run against fold_features_D11{suffix}.csv and suffix all outputs")
+    args = parser.parse_args()
+    if args.suffix:
+        main(OUT_DIR / f"fold_features_D11{args.suffix}.csv", out_suffix=args.suffix)
+    else:
+        main()

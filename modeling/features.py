@@ -70,15 +70,29 @@ def compute_pca_features_for_fold(
     meta: pd.DataFrame | None = None,
     n_pcs: int = 10,
     exclude_pools: frozenset[str] = FROZEN_POOL_EXCLUDE,
+    restrict_to_combos: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Fit HVGs/PCA on cells excluding held_out_lines and exclude_pools;
     project ALL cells (including held-out lines') into that space.
-    Returns a per-cell DataFrame: cell_line, pool, PC1..PCk."""
+    Returns a per-cell DataFrame: cell_line, pool, PC1..PCk.
+
+    restrict_to_combos: optional (cell_line, pool) frame further limiting
+    the FIT population to those combos. None (the default) reproduces the
+    original behaviour, in which cells outside the qualifying combos --
+    including ~25,400 from 39 lines that are not among the 138 -- also
+    contribute to gene stats, HVG selection and the PCA fit. Passing the
+    qualifying combos gives the stricter "fit only on the study
+    population" variant. Projection is unaffected either way: every cell
+    is still projected into the fitted space."""
     path = TIMEPOINT_FILES[timepoint]
     if meta is None:
         meta = load_cell_metadata(timepoint)
 
     fit_mask = (~meta["cell_line"].isin(held_out_lines)) & (~meta["pool"].isin(exclude_pools))
+    if restrict_to_combos is not None:
+        eligible = pd.MultiIndex.from_frame(restrict_to_combos[["cell_line", "pool"]])
+        in_combos = pd.MultiIndex.from_arrays([meta["cell_line"], meta["pool"]]).isin(eligible)
+        fit_mask = fit_mask & pd.Series(in_combos, index=meta.index)
     fit_mask = fit_mask.to_numpy()
 
     mean, var, _n_fit = m005.compute_gene_stats(path, fit_mask=fit_mask)
