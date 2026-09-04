@@ -35,25 +35,46 @@ with target rank in this range). This changed two decisions:
   min**, run as a single background job (avoids paying Python/import
   startup cost per fold).
 
-## First-pass results (real data, ran successfully)
+## Full results (258 folds: plain 50, donor_grouped 50, LOCO 138, LODO 20)
 
 Headline (donor_grouped, nested CV, **no pool-correction** -- see
 "Pool-correction dropped" below):
 
 | task | model | key metrics |
 |---|---|---|
-| regression | lasso | MAE=0.135, RMSE=0.172, **R2=0.667** |
-| regression | ridge | MAE=0.137, RMSE=0.176, R2=0.652 |
-| classification | logistic_l1 | ROC-AUC=0.949, PR-AUC=0.970, balanced_acc=0.913 |
-| classification | logistic_l2 | ROC-AUC=0.944, PR-AUC=0.966, balanced_acc=0.911 |
+| regression | lasso | MAE=0.135, RMSE=0.172, **R2=0.668 ± 0.015** |
+| regression | ridge | MAE=0.138, RMSE=0.176, R2=0.653 ± 0.021 |
+| classification | logistic_l1 | **ROC-AUC=0.951 ± 0.008**, PR-AUC=0.970, balanced_acc=0.913 |
+| classification | logistic_l2 | ROC-AUC=0.943 ± 0.008, PR-AUC=0.965, balanced_acc=0.906 |
 
 D11 features are clearly predictive of D52 differentiation efficiency,
-even under the strict donor-grouped (never-seen-donor) test.
+even under the strict donor-grouped (never-seen-donor) test. Going from
+the 5-repeat first pass to the full 10-repeat + LOCO/LODO run barely
+moved these numbers (R2 0.667->0.668, AUC 0.949->0.951) -- the estimates
+were already stable.
 
-**Plain vs. donor_grouped gap is small** (regression R2 0.685->0.667,
-classification barely moves at all) -- reassuring: the model isn't
-leaning heavily on sibling-line/donor leakage, performance holds up close
-to as well when donors are held out entirely.
+**All four schemes, nested CV:**
+
+| scheme | regression R2 (lasso / ridge) | classification ROC-AUC (L1 / L2) |
+|---|---|---|
+| LOCO (leave-one-line-out) | 0.691 / 0.683 | 0.931 / 0.939 |
+| plain 5-fold | 0.680 / 0.677 | 0.947 / 0.945 |
+| LODO (leave-one-donor-out) | 0.679 / 0.665 | 0.953 / 0.958 |
+| donor_grouped 5-fold | 0.668 / 0.653 | 0.951 / 0.943 |
+
+**Donor-leakage effect is real but small (~0.012 R2), and consistent
+across two independent comparisons**: plain vs. donor_grouped
+(0.680->0.668) and LOCO vs. LODO (0.691->0.679) give the same gap. The
+scheme ordering is mechanistically sensible -- LOCO is most optimistic
+(137/138 lines in training AND siblings allowed), donor_grouped strictest
+(siblings excluded AND ~28 lines held out), LODO in between (prevents
+donor leakage but still trains on ~131-137 lines). **Classification is
+essentially flat across all four schemes** (0.93-0.96) -- no meaningful
+donor-leakage penalty at all.
+
+Caveat on LOCO: its metrics pool all 138 single-line fold predictions (a
+one-line fold can't support per-fold metrics), so it has no variance
+estimate and isn't perfectly comparable to the repeat-averaged schemes.
 
 **Caveat on the regression R2 (checked, see `pool_correction_investigation.md`
 "Follow-up"): mostly reflects correctly separating success from failure,
@@ -80,6 +101,59 @@ repeat 0). Two things visible there that the numbers alone didn't show:
   predicts around true~0.8-0.9 -- the model compresses predictions
   toward the middle of the success range (shrinkage/regression-to-the-
   mean) rather than tracking the full spread.
+
+## Which features matter (feature importance)
+
+`feature_importance.py` -> `feature_importance_table_{task}_{model}.csv`.
+Design and caveats in `feature_importance_plan.md`. Results below are on
+the full 258-fold data; they were essentially unchanged from the 5-repeat
+first pass (selection frequencies firmed up slightly, LOCO deltas moved
+by <0.005), so they look stable.
+
+**Regression (lasso, one-SE-selected k=5):**
+
+| Feature | Univariate ρ | Coef | Sel. freq | LOCO Δ | SHAP | Technical covariate |
+|---|---|---|---|---|---|---|
+| phat_FPP | 0.19 | -0.045 | 0.88 | -0.0015 | 0.003 | High (η²=0.76) |
+| **phat_NB** | **-0.73** | +0.067 | 1.00 | +0.0017 | 0.003 | **Low (η²=0.04)** |
+| phat_P_FPP | 0.34 | reference | -- | -0.0007 (grouped) | -- | High (0.65) |
+| PC1 | 0.56 | 0.004 | 0.80 | -0.0024 | 0.005 | Moderate (0.49) |
+| **PC2** | 0.67 | **+0.312** | 1.00 | **+0.0186** | **1.17** | **High (η²=0.76)** |
+| PC3 | -0.22 | -0.251 | 1.00 | +0.0141 | 0.44 | Moderate (0.50) |
+| PC4 | 0.53 | 0.044 | 1.00 | -0.0009 | 0.046 | Moderate (0.45) |
+| PC5 | -0.02 | -0.052 | 1.00 | +0.0016 | 0.068 | High (0.79) |
+
+**Classification (logistic_l1, one-SE-selected k=2** -- notably simpler
+than the raw argmax's k=4, the one-SE rule working as intended):
+
+| Feature | Univariate ρ | Coef | Sel. freq | LOCO Δ | SHAP | Technical covariate |
+|---|---|---|---|---|---|---|
+| phat_FPP | 0.20 | 0.0 (regularized out) | 0.00 | 0.0 | 0.0 | High (0.76) |
+| **phat_NB** | **-0.73** | **-1.535** | 0.90 | **+0.051** | 0.068 | **Low (η²=0.04)** |
+| phat_P_FPP | 0.41 | reference | -- | **+0.064** (grouped) | -- | High (0.65) |
+| PC1 | 0.58 | 0.0 (regularized out) | 0.10 | 0.0 | 0.0 | Moderate (0.49) |
+| PC2 | 0.59 | +0.648 | 0.82 | +0.004 | 2.44 | High (0.76) |
+
+Three findings:
+1. **`phat_NB` is the standout trustworthy feature** -- strongest
+   univariate signal of anything (ρ=-0.73), near-always selected, largest
+   individual LOCO contribution for classification, and by far the
+   cleanest technically (η²=0.04, the only "Low" feature in either
+   table). The one result to lean on biologically.
+2. **PC2 dominates regression but is heavily pool-confounded**
+   (η²=0.76) -- largest coefficient, SHAP, and LOCO delta, but its
+   predictive power may be substantially technical rather than
+   biological. Treat PC2-based claims cautiously.
+3. **Proportions matter greatly for classification, almost not at all
+   for regression** -- dropping both costs +0.064 AUC (largest single
+   effect in either table) but costs regression ~nothing (-0.0007).
+
+Caveat: `phat_NB`'s univariate correlation is negative (-0.73) but its
+*regression* coefficient is positive (+0.067) -- a suppression effect
+from multivariate adjustment (PC2/PC3 absorb the shared signal). Don't
+read that sign in isolation; the univariate direction and the
+classification coefficient (-1.53) agree that more NB at D11 -> worse D52
+outcome.
 
 ## Pool-correction dropped
 

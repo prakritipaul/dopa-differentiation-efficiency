@@ -22,9 +22,14 @@ from modeling.folds import load_lines_with_label
 from modeling.harness import run_flat_cv, run_nested_cv, summarize_across_repeats
 
 OUT_DIR = Path(__file__).parent
-FOLD_FEATURES_CSV = OUT_DIR / "fold_features_D11.csv"
+FOLD_FEATURES_CSV = OUT_DIR / "fold_features_D11_full.csv"
 
-SCHEMES = ["plain", "donor_grouped"]
+# LOCO/LODO have a single "repeat" (repeat=0 for every fold), so
+# summarize_across_repeats naturally pools all their out-of-fold
+# predictions into one group before computing metrics -- which is exactly
+# the required handling, since a single-line LOCO test fold can't support
+# per-fold classification metrics (see modeling/README.md).
+SCHEMES = ["plain", "donor_grouped", "loco", "lodo"]
 # Pool-correction dropped from the active pipeline (see
 # pool_correction_investigation.md) -- the mechanism behind its effect on
 # results turned out ambiguous/contested even after independent

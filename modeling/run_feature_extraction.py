@@ -1,7 +1,9 @@
 """
-Extract per-fold D11 PCA + proportion features for the plain and
-donor_grouped CV schemes (first-pass prototype scope; LOCO/LODO
-deferred -- see modeling/README.md "First-pass prototype scope").
+Extract per-fold D11 PCA + proportion features for all four CV schemes:
+plain, donor_grouped (repeated stratified K-fold), plus LOCO and LODO
+(full leave-one-line-out / leave-one-donor-out). The first-pass prototype
+run (5 repeats, plain+donor_grouped only) validated the pipeline; this is
+the full-scope run per modeling/README.md's original design.
 
 For each fold: PCA is refit on that fold's training-line cells only
 (excluding pool11, frozen rule) and projected onto every cell (leakage
@@ -14,7 +16,9 @@ PC1..PC10 (pool-level means), phat_FPP/phat_NB/phat_P_FPP, and a `split`
 column (train/test) -- saved to modeling/fold_features_D11.csv. This is
 the leakage-safe per-fold feature table harness.py will consume
 (pool-correction, if applied, happens downstream using the `split`
-column to compute training-only pool means).
+column to compute training-only pool means; dropped from the active
+pipeline per modeling/pool_correction_investigation.md, but still
+supported).
 """
 
 import time
@@ -29,6 +33,8 @@ from modeling.features import (
 )
 from modeling.folds import (
     donor_grouped_repeated_kfold,
+    leave_one_donor_out,
+    leave_one_line_out,
     load_lines_with_label,
     persist_folds,
     plain_repeated_kfold,
@@ -37,20 +43,29 @@ from modeling.folds import (
 OUT_DIR = Path(__file__).parent
 QUALIFYING_COMBOS_CSV = Path(__file__).parent.parent / "metadata_eda" / "qualifying_cell_line_pool_min10_per_timepoint.csv"
 N_SPLITS = 5
-N_REPEATS = 5
+N_REPEATS = 10
 N_PCS = 10
 SEED = 0
 
 
-def main(n_splits: int = N_SPLITS, n_repeats: int = N_REPEATS, out_suffix: str = "") -> None:
+def main(
+    n_splits: int = N_SPLITS,
+    n_repeats: int = N_REPEATS,
+    out_suffix: str = "",
+    include_loco_lodo: bool = True,
+) -> None:
     lines = load_lines_with_label()
     folds = {
         "plain": plain_repeated_kfold(lines, n_splits, n_repeats, SEED),
         "donor_grouped": donor_grouped_repeated_kfold(lines, n_splits, n_repeats, SEED),
     }
-    persist_folds(folds, OUT_DIR / f"fold_assignments_first_pass{out_suffix}.csv")
+    if include_loco_lodo:
+        folds["loco"] = leave_one_line_out(lines)
+        folds["lodo"] = leave_one_donor_out(lines)
+
+    persist_folds(folds, OUT_DIR / f"fold_assignments{out_suffix}.csv")
     total_folds = sum(len(fs) for fs in folds.values())
-    print(f"{total_folds} folds to process (plain + donor_grouped, {n_repeats} repeats each)")
+    print(f"{total_folds} folds to process ({', '.join(f'{k}={len(v)}' for k, v in folds.items())})")
 
     meta = load_cell_metadata("D11")
     qualifying = pd.read_csv(QUALIFYING_COMBOS_CSV)[["cell_line", "pool"]]
