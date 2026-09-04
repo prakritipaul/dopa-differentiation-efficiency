@@ -110,6 +110,33 @@ the full 258-fold data; they were essentially unchanged from the 5-repeat
 first pass (selection frequencies firmed up slightly, LOCO deltas moved
 by <0.005), so they look stable.
 
+### What the "one-SE rule" is
+
+A standard way to pick a hyperparameter config that avoids chasing noise.
+Instead of taking the raw best-scoring config (the argmax across all 55
+`(k, regularization)` combos), you:
+
+1. Find the best mean cross-validated score.
+2. Take every config whose score is within **one standard error** of that
+   best score -- i.e. everything statistically indistinguishable from the
+   winner given how noisy the estimate is.
+3. Among those, pick the **simplest** one.
+
+Rationale: with n=138 and 55 candidates, the literal argmax is often a
+noise peak -- some config got lucky on these particular folds. Anything
+within 1 SE of it is, on the evidence, just as good, so preferring the
+simplest of them gives a more robust and more interpretable model at no
+real cost in performance. "Simplest" here is defined in advance (not
+after seeing results) as: fewest PCs first, then strongest regularization
+(larger `alpha` for ridge/lasso; smaller `C` for logistic, since `C` is
+inverse regularization strength).
+
+Implementation note: the tolerance band uses the std across repeats as a
+conservative proxy for the standard error of the mean, since the summary
+tables don't carry the exact repeat count. Effect here: classification
+went from the raw argmax's k=4 to k=2 -- a materially simpler model for
+statistically indistinguishable performance.
+
 **Regression (lasso, one-SE-selected k=5):**
 
 | Feature | Univariate ρ | Coef | Sel. freq | LOCO Δ | Perm Δ | SHAP | Technical covariate |
@@ -167,6 +194,49 @@ from multivariate adjustment (PC2/PC3 absorb the shared signal). Don't
 read that sign in isolation; the univariate direction and the
 classification coefficient (-1.53) agree that more NB at D11 -> worse D52
 outcome.
+
+### Why the tables stop at PC5 (regression) / PC2 (classification)
+
+`k` is a tuned hyperparameter, so the tables only list features actually
+*in* the selected model. The flat-CV grid tested k=0..10 exhaustively;
+larger k didn't score better, so the one-SE rule took the simpler model.
+
+**Known design limitation** (raised by Codex): we only ever test PC
+*prefixes* (PC1..k), never arbitrary subsets. PCs are ordered by variance
+in the *predictors*, not by outcome relevance -- so a predictive PC8 sitting
+behind noisy PC6/PC7 could be missed, since reaching it requires accepting
+k=8 and dragging the noise in with it.
+
+Checked this directly -- univariate association (no model involved) for
+every PC, including the excluded ones:
+
+| PC | ρ (regression) | ρ (classification) | pool η² | In model? |
+|---|---|---|---|---|
+| PC1 | 0.563 | 0.584 | 0.490 | both |
+| PC2 | **0.670** | **0.593** | 0.764 | both |
+| PC3 | -0.221 | -0.370 | 0.498 | regression only |
+| PC4 | 0.525 | 0.477 | 0.448 | regression only |
+| PC5 | -0.018 | -0.015 | 0.788 | regression only |
+| PC6 | -0.101 | -0.089 | **0.909** | no |
+| PC7 | 0.275 | 0.364 | 0.531 | no |
+| PC8 | 0.260 | 0.197 | **0.963** | no |
+| PC9 | 0.061 | -0.147 | **0.946** | no |
+| PC10 | -0.203 | -0.157 | 0.461 | no |
+
+**Conclusion: little is being missed.** No excluded PC approaches the
+included ones' univariate strength (best excluded is PC7 at ρ≈0.28-0.36
+vs. PC2's 0.67). More tellingly, **PC6/PC8/PC9 are nearly pure batch
+signal** (η² = 0.91 / 0.96 / 0.95 -- PC8's means 96% of its variance is
+explained by which pool a line came from). Excluding them is a feature,
+not a loss.
+
+One nuance: **PC5 is included despite ~zero univariate correlation**
+(-0.018). Since the one-SE rule takes the simplest config within
+tolerance and still chose k=5 over k=4, PC5 must contribute
+multivariately despite being marginally useless -- classic suppressor
+behavior (correlating with noise in the other PCs so the model can cancel
+it out). Its own LOCO (+0.0016) and permutation (0.0085) deltas are
+small, consistent with a minor supporting role rather than a driver.
 
 ## Pool-correction dropped
 
