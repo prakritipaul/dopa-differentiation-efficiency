@@ -46,7 +46,20 @@ from sklearn.preprocessing import StandardScaler
 from modeling.features import pool_correct, pool_then_line_average
 from modeling.models import PC_COUNT_GRID, ModelSpec, models_for_task
 
-PROPORTION_COLS = ["phat_FPP", "phat_NB", "phat_P_FPP"]
+# The three D11 cell-type proportions sum to EXACTLY 1.0 for every row, so
+# they are compositional: including all three alongside an intercept makes
+# the design matrix rank-deficient. ALL_PROPORTION_COLS is for carrying the
+# data around (line-level averaging, pool correction, reporting);
+# MODEL_PROPORTION_COLS is what may enter a simultaneous fit, with
+# phat_P_FPP kept implicit as 1 - FPP - NB.
+#
+# These two names are deliberately mirrored in (and imported by)
+# feature_importance.py. An earlier version defined the model feature set
+# separately in each module, which let them drift: the harness scored a
+# 3-proportion model while the importance tables described a 2-proportion
+# one. Keep this as the single definition.
+ALL_PROPORTION_COLS = ["phat_FPP", "phat_NB", "phat_P_FPP"]
+MODEL_PROPORTION_COLS = ["phat_FPP", "phat_NB"]
 ALL_PC_COLS = [f"PC{i}" for i in range(1, 11)]
 DECISION_THRESHOLD = 0.5  # probability -> class-call threshold; kept separate from the 0.2 outcome threshold
 
@@ -61,10 +74,14 @@ def _param_grid_combos(param_grid: dict) -> list[dict]:
 
 
 def build_feature_matrix(line_level: pd.DataFrame, k: int) -> np.ndarray:
-    """3 proportions + first k PCs (k=0..10). PCA components are
+    """2 proportions + first k PCs (k=0..10). PCA components are
     hierarchical, so this truncates columns from one PCA fit rather than
-    needing a distinct fit per k."""
-    cols = PROPORTION_COLS + ALL_PC_COLS[:k]
+    needing a distinct fit per k.
+
+    Only MODEL_PROPORTION_COLS enters the matrix -- phat_P_FPP is the
+    implicit reference category (1 - FPP - NB). Including all three made
+    the design matrix rank-deficient once an intercept was present."""
+    cols = MODEL_PROPORTION_COLS + ALL_PC_COLS[:k]
     return line_level[cols].to_numpy()
 
 
@@ -97,7 +114,10 @@ def build_line_level_for_fold(
     sub = fold_features[
         (fold_features["scheme"] == scheme) & (fold_features["repeat"] == repeat) & (fold_features["fold"] == fold)
     ].copy()
-    value_cols = PROPORTION_COLS + ALL_PC_COLS
+    # All three proportions are carried through averaging/correction (they
+    # are data, and downstream reporting uses phat_P_FPP); only
+    # MODEL_PROPORTION_COLS reaches a fit, via build_feature_matrix.
+    value_cols = ALL_PROPORTION_COLS + ALL_PC_COLS
 
     if pool_correction:
         train_mask = (sub["split"] == "train").to_numpy()

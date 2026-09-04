@@ -53,14 +53,13 @@ def _identity_regression_spec():
 
 def test_build_feature_matrix_identity_and_order():
     frame = pd.DataFrame(
-        {c: [i, i + 100] for i, c in enumerate(harness.PROPORTION_COLS + harness.ALL_PC_COLS)}
+        {c: [i, i + 100] for i, c in enumerate(harness.ALL_PROPORTION_COLS + harness.ALL_PC_COLS)}
     )
     for k in (0, 3, 10):
-        expected_cols = harness.PROPORTION_COLS + harness.ALL_PC_COLS[:k]
+        expected_cols = harness.MODEL_PROPORTION_COLS + harness.ALL_PC_COLS[:k]
         np.testing.assert_array_equal(harness.build_feature_matrix(frame, k), frame[expected_cols].to_numpy())
 
 
-@pytest.mark.xfail(strict=True, reason="One compositional coordinate must be omitted to avoid intercept collinearity")
 def test_build_feature_matrix_omits_one_implicit_compositional_coordinate():
     # The retained coordinates must vary INDEPENDENTLY, not just sum to 1. If
     # phat_P_FPP were held constant, phat_FPP + phat_NB would also be constant
@@ -127,7 +126,7 @@ def test_build_line_level_partition_and_unweighted_pool_mean(lines_and_fold_feat
 
 @pytest.mark.xfail(strict=True, reason="Unseen test pools currently map to NaN during pool correction")
 def test_pool_correction_has_defined_values_for_pool_seen_only_in_test():
-    cols = harness.PROPORTION_COLS + harness.ALL_PC_COLS
+    cols = harness.ALL_PROPORTION_COLS + harness.ALL_PC_COLS
     rows = []
     for line, pool, split, value in (("train", "poolA", "train", 1.0), ("test", "poolB", "test", 2.0)):
         rows.append({"scheme": "plain", "repeat": 0, "fold": 0, "cell_line": line,

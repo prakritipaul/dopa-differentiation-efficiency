@@ -50,10 +50,20 @@ def test_integration_small_extraction():
     out_suffix = "_agent_check"
     out_dir = REPO_ROOT / "modeling"
     features_csv = out_dir / f"fold_features_D11{out_suffix}.csv"
-    fold_assignments_csv = out_dir / f"fold_assignments_first_pass{out_suffix}.csv"
+    # Must match run_feature_extraction's actual output name. This previously
+    # read "fold_assignments_first_pass{suffix}" -- the name used when this
+    # test was written -- so cleanup silently missed the real file after the
+    # writer was renamed.
+    fold_assignments_csv = out_dir / f"fold_assignments{out_suffix}.csv"
 
     try:
-        main(n_splits=2, n_repeats=1, out_suffix=out_suffix)
+        # include_loco_lodo=False is required for the row count below to mean
+        # anything: it defaults to True, which would add 138 LOCO + 20 LODO
+        # folds (162 total, not 4). This test asserted 636 rows while
+        # requesting the default, so it had been failing since LOCO/LODO were
+        # added -- unnoticed because it is marked slow and every run used
+        # `-m "not slow"`.
+        main(n_splits=2, n_repeats=1, out_suffix=out_suffix, include_loco_lodo=False)
 
         assert features_csv.exists()
         df = pd.read_csv(features_csv)

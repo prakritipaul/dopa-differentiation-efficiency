@@ -5,11 +5,29 @@ plain, donor_grouped (repeated stratified K-fold), plus LOCO and LODO
 run (5 repeats, plain+donor_grouped only) validated the pipeline; this is
 the full-scope run per modeling/README.md's original design.
 
-For each fold: PCA is refit on that fold's training-line cells only
-(excluding pool11, frozen rule) and projected onto every cell (leakage
-safety); proportions don't need per-fold refitting (no fitted parameter,
-just tabulating existing celltype labels) so they're computed once and
-reused across all folds.
+For each fold: PCA is refit excluding that fold's held-out lines (and
+pool11, frozen rule) and projected onto every cell (leakage safety);
+proportions don't need per-fold refitting (no fitted parameter, just
+tabulating existing celltype labels) so they're computed once and reused
+across all folds.
+
+FITTING POPULATION -- a deliberate deviation, stated explicitly because
+an earlier version of this docstring described it wrongly. The PCA is fit
+on all D11 cells except (a) the fold's held-out lines and (b) pool11 --
+which INCLUDES ~26,400 cells outside the qualifying (cell_line, pool)
+combos, ~25,400 of them from 39 cell lines that are not among the 138 and
+therefore never appear in any train or test set. Full metadata is passed
+to the PCA step below and the qualifying filter is applied only
+afterwards, to the resulting coordinates.
+
+This is not leakage: the held-out mask is applied by cell_line, so every
+cell of a held-out line is excluded regardless of pool, and the extra
+cells belong to lines that are never predicted on. Using additional
+unlabeled cells to fit a basis is a legitimate (transductive) choice and
+gives the basis more data. It is recorded here rather than silently
+assumed. Restricting the fit to qualifying combos would require
+re-extracting all 258 folds and would change every PC-derived number; not
+done, since there is no correctness argument for it.
 
 Output: one row per (scheme, repeat, fold, cell_line, pool) combo, with
 PC1..PC10 (pool-level means), phat_FPP/phat_NB/phat_P_FPP, and a `split`

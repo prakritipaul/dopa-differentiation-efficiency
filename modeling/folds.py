@@ -2,10 +2,16 @@
 Fold construction for the D11 -> D52 modeling pipeline.
 
 All fold schemes are timepoint-agnostic (they operate on cell_line/donor/
-label metadata only, never touch expression data) and are stratified by
-the binary success/failure label (diff_efficiency >= 0.2) -- used for
-BOTH the regression and classification tasks, so both tasks share
-identical fold assignments (per modeling/README.md).
+label metadata only, never touch expression data) and are used for BOTH
+the regression and classification tasks, so both tasks share identical
+fold assignments (per modeling/README.md).
+
+Only `plain` and `donor_grouped` are STRATIFIED by the binary
+success/failure label (diff_efficiency >= 0.2). `loco` and `lodo` are
+exhaustive enumerations -- one fold per line, one fold per donor -- so
+their folds are fully determined and there is no freedom left to
+stratify with. (An earlier version of this docstring claimed all four
+were stratified, which was false.)
 
 Four schemes:
   - plain: ordinary repeated stratified K-fold over the 138 lines

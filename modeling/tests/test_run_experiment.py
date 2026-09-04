@@ -44,12 +44,16 @@ def test_run_all_has_flat_and_nested_rows_for_every_scheme(patched_run_all):
     assert (counts == 2).all()  # two model families per scheme/tuning
 
 
-@pytest.mark.xfail(strict=True, reason="run_all currently drops nested selected_k/selected_param during summarization")
 def test_run_all_preserves_nested_selected_configuration(patched_run_all):
     out = run_experiment.run_all("regression", patched_run_all)
     nested = out[out.tuning == "nested"]
     assert nested["k"].notna().all()
     assert nested["param_str"].notna().all()
+    assert nested["selection_distribution"].notna().all()
+    # Metrics must still be grouped on model alone: one row per model per
+    # scheme. Grouping by the selected config instead would split a repeat
+    # into config-specific subsets of lines and change the reported metric.
+    assert (nested.groupby(["scheme", "model"]).size() == 1).all()
 
 
 def _headline_frame():

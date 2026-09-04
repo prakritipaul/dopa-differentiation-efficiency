@@ -52,6 +52,8 @@ from sklearn.preprocessing import StandardScaler
 from modeling.folds import load_lines_with_label
 from modeling.harness import (
     ALL_PC_COLS,
+    ALL_PROPORTION_COLS,
+    MODEL_PROPORTION_COLS,
     build_feature_matrix,
     build_line_level_for_fold,
     compute_classification_metrics,
@@ -65,8 +67,10 @@ D11_PCA_CSV = REPO_ROOT / "metadata_eda" / "d11_pca_coords_per_line.csv"
 D11_PROPORTIONS_CSV = REPO_ROOT / "metadata_eda" / "d11_celltype_proportions_with_se.csv"
 QUALIFYING_COMBOS_CSV = REPO_ROOT / "metadata_eda" / "qualifying_cell_line_pool_min10_per_timepoint.csv"
 
-ALL_PROPORTION_COLS = ["phat_FPP", "phat_NB", "phat_P_FPP"]
-MODEL_PROPORTION_COLS = ["phat_FPP", "phat_NB"]  # phat_P_FPP excluded from joint fits (compositional)
+# Imported from harness rather than redefined here: these two modules must
+# agree on what enters a fit, and when each defined its own copy they
+# drifted -- the harness scored a 3-proportion model while these tables
+# described a 2-proportion one. Single definition, in harness.py.
 
 
 def _load_module(name: str):
