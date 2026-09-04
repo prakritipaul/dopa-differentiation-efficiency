@@ -79,6 +79,7 @@ def main(
     out_suffix: str = "",
     include_loco_lodo: bool = True,
     restrict_fit_to_qualifying: bool = False,
+    resume: bool = True,
 ) -> None:
     """restrict_fit_to_qualifying: when True, the HVG/PCA fit is limited to
     cells in the qualifying (cell_line, pool) combos -- the study
@@ -86,7 +87,13 @@ def main(
     default, preserving the original run) cells outside those combos also
     contribute to the fit; see this module's docstring. Use a distinct
     out_suffix so the two variants sit side by side rather than one
-    overwriting the other."""
+    overwriting the other.
+
+    resume: fold rows are appended to the output as each fold completes, so
+    an interrupted run can be restarted and will skip folds already on
+    disk. Pass resume=False to discard any existing output and start
+    clean -- required if the fitting population changed, since otherwise
+    rows computed under the old settings would be silently kept."""
     lines = load_lines_with_label()
     folds = {
         "plain": plain_repeated_kfold(lines, n_splits, n_repeats, SEED),
@@ -107,12 +114,29 @@ def main(
     # Proportions: no per-fold refit needed (pre-existing labels, no fitting step).
     props = compute_proportion_features(meta_q)
 
-    all_rows = []
+    out_path = OUT_DIR / f"fold_features_D11{out_suffix}.csv"
+
+    # Each fold's rows are appended as soon as they are computed, so a crash
+    # at fold 250 of 258 costs one fold rather than the whole multi-hour run.
+    # On restart, folds already present in the file are skipped.
+    done_keys: set[tuple] = set()
+    if resume and out_path.exists():
+        prev = pd.read_csv(out_path, usecols=["scheme", "repeat", "fold"]).drop_duplicates()
+        done_keys = {(s, int(r), int(fo)) for s, r, fo in prev.itertuples(index=False)}
+        print(f"resuming: {len(done_keys)} of {total_folds} folds already in {out_path.name}")
+    elif not resume and out_path.exists():
+        out_path.unlink()
+
+    rows_written = 0
+    computed = 0  # folds actually computed this run; skipped ones must not
+                  # count toward the rate, or the ETA is wildly wrong on resume
     t_start = time.time()
     fold_count = 0
     for scheme, fold_list in folds.items():
         for f in fold_list:
             fold_count += 1
+            if (scheme, f.repeat, f.fold) in done_keys:
+                continue
             t0 = time.time()
             held_out = set(f.test_lines)
             pcs = compute_pca_features_for_fold(
@@ -129,21 +153,30 @@ def main(
             combo["repeat"] = f.repeat
             combo["fold"] = f.fold
             combo["split"] = combo["cell_line"].apply(lambda c: "test" if c in held_out else "train")
-            all_rows.append(combo)
+
+            # Append immediately; header only when creating the file. Column
+            # order is fixed by the first write, so reindex every later chunk
+            # to it rather than trusting dict ordering to stay stable.
+            if out_path.exists():
+                header_cols = pd.read_csv(out_path, nrows=0).columns.tolist()
+                combo = combo[header_cols]
+                combo.to_csv(out_path, mode="a", header=False, index=False)
+            else:
+                combo.to_csv(out_path, index=False)
+            rows_written += len(combo)
+            computed += 1
 
             elapsed = time.time() - t0
             total_elapsed = time.time() - t_start
-            eta = total_elapsed / fold_count * (total_folds - fold_count)
+            eta = total_elapsed / computed * (total_folds - fold_count)
             print(
                 f"[{fold_count}/{total_folds}] {scheme} repeat={f.repeat} fold={f.fold} "
                 f"took {elapsed:.1f}s (elapsed {total_elapsed / 60:.1f}min, ETA {eta / 60:.1f}min)",
                 flush=True,
             )
 
-    result = pd.concat(all_rows, ignore_index=True)
-    out_path = OUT_DIR / f"fold_features_D11{out_suffix}.csv"
-    result.to_csv(out_path, index=False)
-    print(f"\nSaved {len(result)} rows to {out_path}")
+    total_rows = len(pd.read_csv(out_path, usecols=["scheme"]))
+    print(f"\nSaved {total_rows} rows to {out_path} ({rows_written} written this run)")
 
 
 if __name__ == "__main__":
