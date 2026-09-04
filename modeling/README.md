@@ -112,27 +112,40 @@ by <0.005), so they look stable.
 
 **Regression (lasso, one-SE-selected k=5):**
 
-| Feature | Univariate ρ | Coef | Sel. freq | LOCO Δ | SHAP | Technical covariate |
-|---|---|---|---|---|---|---|
-| phat_FPP | 0.19 | -0.045 | 0.88 | -0.0015 | 0.003 | High (η²=0.76) |
-| **phat_NB** | **-0.73** | +0.067 | 1.00 | +0.0017 | 0.003 | **Low (η²=0.04)** |
-| phat_P_FPP | 0.34 | reference | -- | -0.0007 (grouped) | -- | High (0.65) |
-| PC1 | 0.56 | 0.004 | 0.80 | -0.0024 | 0.005 | Moderate (0.49) |
-| **PC2** | 0.67 | **+0.312** | 1.00 | **+0.0186** | **1.17** | **High (η²=0.76)** |
-| PC3 | -0.22 | -0.251 | 1.00 | +0.0141 | 0.44 | Moderate (0.50) |
-| PC4 | 0.53 | 0.044 | 1.00 | -0.0009 | 0.046 | Moderate (0.45) |
-| PC5 | -0.02 | -0.052 | 1.00 | +0.0016 | 0.068 | High (0.79) |
+| Feature | Univariate ρ | Coef | Sel. freq | LOCO Δ | Perm Δ | SHAP | Technical covariate |
+|---|---|---|---|---|---|---|---|
+| phat_FPP | 0.19 | -0.045 | 0.88 | -0.0015 | 0.035 (grp) | 0.003 | High (η²=0.76) |
+| **phat_NB** | **-0.73** | +0.067 | 1.00 | +0.0017 | 0.035 (grp) | 0.003 | **Low (η²=0.04)** |
+| phat_P_FPP | 0.34 | reference | -- | -0.0007 (grp) | 0.035 (grp) | -- | High (0.65) |
+| PC1 | 0.56 | 0.004 | 0.80 | -0.0024 | 0.005 | 0.005 | Moderate (0.49) |
+| **PC2** | 0.67 | **+0.312** | 1.00 | **+0.0186** | **0.176** | **1.17** | **High (η²=0.76)** |
+| PC3 | -0.22 | -0.251 | 1.00 | +0.0141 | 0.146 | 0.44 | Moderate (0.50) |
+| PC4 | 0.53 | 0.044 | 1.00 | -0.0009 | 0.015 | 0.046 | Moderate (0.45) |
+| PC5 | -0.02 | -0.052 | 1.00 | +0.0016 | 0.009 | 0.068 | High (0.79) |
 
 **Classification (logistic_l1, one-SE-selected k=2** -- notably simpler
 than the raw argmax's k=4, the one-SE rule working as intended):
 
-| Feature | Univariate ρ | Coef | Sel. freq | LOCO Δ | SHAP | Technical covariate |
-|---|---|---|---|---|---|---|
-| phat_FPP | 0.20 | 0.0 (regularized out) | 0.00 | 0.0 | 0.0 | High (0.76) |
-| **phat_NB** | **-0.73** | **-1.535** | 0.90 | **+0.051** | 0.068 | **Low (η²=0.04)** |
-| phat_P_FPP | 0.41 | reference | -- | **+0.064** (grouped) | -- | High (0.65) |
-| PC1 | 0.58 | 0.0 (regularized out) | 0.10 | 0.0 | 0.0 | Moderate (0.49) |
-| PC2 | 0.59 | +0.648 | 0.82 | +0.004 | 2.44 | High (0.76) |
+| Feature | Univariate ρ | Coef | Sel. freq | LOCO Δ | Perm Δ | SHAP | Technical covariate |
+|---|---|---|---|---|---|---|---|
+| phat_FPP | 0.20 | 0.0 (regularized out) | 0.00 | 0.0 | 0.277 (grp) | 0.0 | High (0.76) |
+| **phat_NB** | **-0.73** | **-1.535** | 0.90 | **+0.051** | **0.277 (grp)** | 0.068 | **Low (η²=0.04)** |
+| phat_P_FPP | 0.41 | reference | -- | **+0.064** (grp) | 0.277 (grp) | -- | High (0.65) |
+| PC1 | 0.58 | 0.0 (regularized out) | 0.10 | 0.0 | 0.000 | 0.0 | Moderate (0.49) |
+| PC2 | 0.59 | +0.648 | 0.82 | +0.004 | 0.080 | 2.44 | High (0.76) |
+
+("grp" = grouped: permutation always shuffles the 3 proportions as one
+block, since permuting one alone implies an impossible third coordinate.)
+
+**LOCO vs. permutation disagree for the regression proportions, and the
+disagreement is the finding**: permutation Δ=0.035 (the fitted model does
+rely on them) but LOCO Δ≈0 (refitting without them costs nothing). That's
+the correlated-feature signature -- the proportions carry real signal,
+but it's redundantly available in the PCs, so a refit compensates. For
+classification both measures agree they're essential (perm 0.277, LOCO
+0.064, both largest in the table), meaning there the proportions carry
+something the PCs don't replicate. Running only one of the two measures
+would have told a misleading story either way.
 
 Three findings:
 1. **`phat_NB` is the standout trustworthy feature** -- strongest

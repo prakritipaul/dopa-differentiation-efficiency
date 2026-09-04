@@ -446,19 +446,25 @@ def run_for_model(
     rows = []
     for feat in all_features:
         is_p_fpp = feat == "phat_P_FPP"
+        is_proportion = feat in ALL_PROPORTION_COLS
         coef_row = coef_summary[coef_summary["feature"] == feat]
         loco_row = loco[loco["feature"] == ("grouped_proportions" if is_p_fpp else feat)]
-        perm_row = perm[perm["feature"] == ("proportions_group" if feat in MODEL_PROPORTION_COLS else feat)] if not is_p_fpp else None
+        # Permutation always groups the proportions (permuting one alone
+        # implies an impossible third coordinate), so all 3 proportion
+        # rows share the group's value; PCs get their individual value.
+        perm_row = perm[perm["feature"] == ("proportions_group" if is_proportion else feat)]
 
         rows.append(
             {
                 "feature": feat,
-                "univariate_spearman": univariate.get(feat, np.nan),
+                "univariate_spearman": round(float(univariate.get(feat, np.nan)), 4),
                 "coefficient": "reference (=1-FPP-NB)" if is_p_fpp else round(float(coef_row["full_fit_coef"].iloc[0]), 4),
                 "regularized_to_zero": None if is_p_fpp else bool(coef_row["regularized_to_zero"].iloc[0]),
                 "selection_frequency": None if is_p_fpp else round(float(coef_row["selection_frequency"].iloc[0]), 2),
                 "loco_delta": round(float(loco_row["loco_delta_mean"].iloc[0]), 4) if len(loco_row) else np.nan,
                 "loco_note": "grouped (FPP+NB dropped together)" if is_p_fpp else "individual",
+                "permutation_delta": round(float(perm_row["perm_delta_mean"].iloc[0]), 4) if len(perm_row) else np.nan,
+                "permutation_note": "grouped (all proportions permuted together)" if is_proportion else "individual",
                 "shap_mean_abs": round(float(shap_like.get(feat, np.nan)), 4) if not is_p_fpp else np.nan,
                 "technical_covariate_eta2": round(float(tech_cov[feat]), 3),
                 "technical_covariate_label": bucket_eta_sq(tech_cov[feat]),
