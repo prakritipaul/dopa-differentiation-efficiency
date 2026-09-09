@@ -1,5 +1,7 @@
 """Fast orchestration and pre-registration tests for run_experiment."""
 
+from pathlib import Path
+
 import pandas as pd
 import pytest
 
@@ -25,6 +27,11 @@ def _summary_predictions(scheme, nested=False):
 
 @pytest.fixture
 def patched_run_all(monkeypatch, tmp_path):
+    # run_all writes nested_selections_{task}.csv as a side effect. Redirect
+    # it into tmp_path: without this the suite overwrote the committed
+    # modeling/nested_selections_regression.csv with fixture data on every
+    # run, and that corrupt file was committed.
+    monkeypatch.setattr(run_experiment, "OUT_DIR", tmp_path)
     csv = tmp_path / "fold_features.csv"
     pd.DataFrame({"scheme": ["placeholder"]}).to_csv(csv, index=False)
     monkeypatch.setattr(run_experiment, "SCHEMES", ["plain", "donor_grouped", "loco", "lodo"])
@@ -83,3 +90,21 @@ def test_preregistered_headline_exists_in_run_all_output(patched_run_all):
     selected = run_experiment.select_headline(out, "regression")
     assert len(selected) == 1
     assert selected.model.item() == "ridge"
+
+
+def test_run_all_does_not_write_into_the_package_directory(patched_run_all, tmp_path):
+    """run_all's only disk side effect must land in the injected out_dir.
+
+    The suite previously overwrote modeling/nested_selections_regression.csv
+    with synthetic fixture data on every run; the corrupted file was then
+    committed and looked like a real result. This asserts the side effect is
+    contained.
+    """
+    package_dir = Path(run_experiment.__file__).parent
+    before = {p.name: p.stat().st_mtime_ns for p in package_dir.glob("nested_selections_*.csv")}
+
+    run_experiment.run_all("regression", patched_run_all)
+
+    after = {p.name: p.stat().st_mtime_ns for p in package_dir.glob("nested_selections_*.csv")}
+    assert after == before, f"run_all touched committed files in {package_dir}: {set(after) ^ set(before) or 'mtime changed'}"
+    assert (tmp_path / "nested_selections_regression.csv").exists(), "selections should be written to the injected dir"

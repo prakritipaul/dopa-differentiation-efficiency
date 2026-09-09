@@ -21,6 +21,13 @@ from sklearn.linear_model import Lasso, LogisticRegression, Ridge
 # construction (see features.py), not an estimator hyperparameter.
 PC_COUNT_GRID: list[int] = list(range(0, 11))
 
+# saga is a STOCHASTIC solver: without a fixed random_state, logistic_l1
+# coefficients drift run to run (measured max|diff| ~5.7e-4 on this data),
+# so results were not exactly reproducible and re-running produced
+# spurious 4th-decimal diffs in the importance tables. lbfgs ignores
+# random_state, but both are pinned so the registry has one rule.
+SEED = 0
+
 
 @dataclass(frozen=True)
 class ModelSpec:
@@ -59,7 +66,7 @@ CLASSIFICATION_MODELS: list[ModelSpec] = [
         name="logistic_l2",
         task="classification",
         estimator_factory=lambda: LogisticRegression(
-            l1_ratio=0.0, solver="lbfgs", max_iter=5_000, class_weight="balanced"
+            l1_ratio=0.0, solver="lbfgs", max_iter=5_000, class_weight="balanced", random_state=SEED
         ),
         param_grid={"C": [0.01, 0.1, 1.0, 10.0, 100.0]},
     ),
@@ -67,7 +74,7 @@ CLASSIFICATION_MODELS: list[ModelSpec] = [
         name="logistic_l1",
         task="classification",
         estimator_factory=lambda: LogisticRegression(
-            l1_ratio=1.0, solver="saga", max_iter=5_000, class_weight="balanced"
+            l1_ratio=1.0, solver="saga", max_iter=5_000, class_weight="balanced", random_state=SEED
         ),
         param_grid={"C": [0.01, 0.1, 1.0, 10.0, 100.0]},
     ),

@@ -2,9 +2,9 @@ feature,univariate_spearman,coefficient,regularized_to_zero,selection_frequency,
 phat_FPP,0.1907,-0.0958,False,1.0,0.0001,individual,0.0464,grouped (all proportions permuted together),0.0695,0.755,High (pool-associated)
 phat_NB,-0.7273,0.0513,False,1.0,0.0002,individual,0.0464,grouped (all proportions permuted together),0.0398,0.037,Low
 phat_P_FPP,0.3431,reference (=1-FPP-NB),,,-0.0001,grouped (FPP+NB dropped together),0.0464,grouped (all proportions permuted together),,0.651,High (pool-associated)
-PC1,0.5262,-0.0053,False,1.0,-0.0031,individual,0.0048,individual,0.004,0.462,Moderate
-PC2,-0.8085,-0.2677,False,1.0,0.0114,individual,0.1943,individual,0.2123,0.114,Low
-PC3,0.5784,0.0871,False,1.0,0.0133,individual,0.073,individual,0.0657,0.832,High (pool-associated)
-PC4,0.4999,0.0552,False,1.0,-0.0008,individual,0.0168,individual,0.0436,0.465,Moderate
-PC5,0.1533,-0.0858,False,1.0,0.0021,individual,0.0252,individual,0.066,0.846,High (pool-associated)
-PC6,-0.1142,0.0399,False,1.0,0.0011,individual,0.006,individual,0.0272,0.79,High (pool-associated)
+PC1,0.5262,-0.0053,False,1.0,-0.0031,individual,0.0048,individual,0.0041,0.462,Moderate
+PC2,-0.8085,-0.2677,False,1.0,0.0114,individual,0.1943,individual,0.2182,0.114,Low
+PC3,0.5784,0.0871,False,1.0,0.0133,individual,0.073,individual,0.0698,0.832,High (pool-associated)
+PC4,0.4999,0.0552,False,1.0,-0.0008,individual,0.0168,individual,0.0435,0.465,Moderate
+PC5,0.1533,-0.0858,False,1.0,0.0021,individual,0.0252,individual,0.0616,0.846,High (pool-associated)
+PC6,-0.1142,0.0399,False,1.0,0.0011,individual,0.006,individual,0.0328,0.79,High (pool-associated)

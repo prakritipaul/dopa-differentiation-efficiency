@@ -143,6 +143,7 @@ def select_winning_config_one_se(
     metric: str,
     minimize: bool,
     n_repeats: int | None = None,
+    fold_features_csv: Path | None = None,
 ) -> tuple[int, dict]:
     """Simplest (k, params) within one STANDARD ERROR of the flat-CV
     grid's best mean score, rather than the raw (noisy, at n=138 across
@@ -160,7 +161,9 @@ def select_winning_config_one_se(
     std_col = mean_col.replace("_mean", "_std")
 
     if n_repeats is None:
-        n_repeats = _infer_n_repeats(scheme)
+        if fold_features_csv is None:
+            raise ValueError("pass n_repeats or fold_features_csv so the one-SE tolerance uses this run's repeat count")
+        n_repeats = _infer_n_repeats(scheme, fold_features_csv)
 
     best_row = flat.loc[flat[mean_col].idxmin() if minimize else flat[mean_col].idxmax()]
     tolerance = best_row[std_col] / np.sqrt(n_repeats)
@@ -185,15 +188,29 @@ def _parse_param_str(s: str) -> dict:
     return out
 
 
-def _infer_n_repeats(scheme: str, fold_features_csv: Path | None = None) -> int:
+def _infer_n_repeats(scheme: str, fold_features_csv: Path) -> int:
     """Number of distinct repeats for a scheme, needed to turn the
     across-repeat SD into a standard error. LOCO/LODO have a single
-    repeat by construction."""
-    path = fold_features_csv or (OUT_DIR / "fold_features_D11_full.csv")
-    if not path.exists():
-        path = OUT_DIR / "fold_features_D11.csv"
-    ff = pd.read_csv(path, usecols=["scheme", "repeat"])
-    return int(ff.loc[ff["scheme"] == scheme, "repeat"].nunique())
+    repeat by construction.
+
+    Must be read from the SAME fold-features table the run is using. This
+    previously defaulted to fold_features_D11_full.csv regardless, and
+    fell back to fold_features_D11.csv if that was absent -- so a variant
+    or a different-timepoint run could silently take n_repeats from an
+    unrelated table and compute the wrong one-SE tolerance. It happened to
+    be harmless for the _qualonly run only because that run reuses
+    identical fold assignments; nothing enforced that. Now required, and
+    a missing file is a loud error rather than a silent substitution."""
+    if not fold_features_csv.exists():
+        raise FileNotFoundError(
+            f"{fold_features_csv} not found; n_repeats for the one-SE rule must come from "
+            f"the fold-features table this run is actually using, not a substitute."
+        )
+    ff = pd.read_csv(fold_features_csv, usecols=["scheme", "repeat"])
+    n = int(ff.loc[ff["scheme"] == scheme, "repeat"].nunique())
+    if n < 1:
+        raise ValueError(f"no rows for scheme={scheme!r} in {fold_features_csv.name}")
+    return n
 
 
 # ---------------------------------------------------------------------------
@@ -433,7 +450,7 @@ def compute_shap_like(
     wide-scale features (PCs, raw SD ~1-9) relative to narrow ones
     (proportions, raw SD ~0.05). Using z = (x - mean)/std puts every
     feature on the same footing, which is the whole point of the column."""
-    features = load_full_fit_features()
+    features = load_full_fit_features(pca_csv)
     subset = features[feature_names]
     z = (subset - subset.mean()) / subset.std(ddof=0)
     contributions = z.mul(full_fit_coefs[feature_names], axis=1)
@@ -474,7 +491,9 @@ def run_for_model(
     out_suffix: str = "", pca_csv: Path | None = None,
 ) -> pd.DataFrame:
     model_spec = next(m for m in models_for_task(task) if m.name == model_name)
-    k, params = select_winning_config_one_se(results_csv, model_name, scheme, metric, minimize)
+    k, params = select_winning_config_one_se(
+        results_csv, model_name, scheme, metric, minimize, fold_features_csv=fold_features_csv
+    )
     print(f"{model_name}: winning config (one-SE rule) k={k}, params={params}")
 
     feature_names = _model_feature_names(k)

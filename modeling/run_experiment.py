@@ -74,7 +74,18 @@ def summarize_nested_selections(nested_preds: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def run_all(task: str, fold_features_csv: Path = FOLD_FEATURES_CSV, out_suffix: str = "") -> pd.DataFrame:
+def run_all(
+    task: str,
+    fold_features_csv: Path = FOLD_FEATURES_CSV,
+    out_suffix: str = "",
+    out_dir: Path | None = None,
+) -> pd.DataFrame:
+    """out_dir: where nested_selections_{task}{suffix}.csv is written.
+    Defaults to the package directory. Injectable because run_all has a
+    side effect on disk, and the test suite was silently overwriting the
+    committed modeling/nested_selections_regression.csv with synthetic
+    fixture data on every run -- which is how corrupt content ended up
+    committed."""
     fold_features = pd.read_csv(fold_features_csv)
     lines = load_lines_with_label()
 
@@ -117,7 +128,7 @@ def run_all(task: str, fold_features_csv: Path = FOLD_FEATURES_CSV, out_suffix: 
         # the rename approach overwrote the committed baseline file before
         # moving it aside, which deleted the baseline selections from the repo.
         selections[cols].drop_duplicates().to_csv(
-            OUT_DIR / f"nested_selections_{task}{out_suffix}.csv", index=False
+            (out_dir or OUT_DIR) / f"nested_selections_{task}{out_suffix}.csv", index=False
         )
 
     return pd.concat(summaries, ignore_index=True)

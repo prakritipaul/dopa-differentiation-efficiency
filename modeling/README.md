@@ -116,6 +116,12 @@ the full 258-fold data; they were essentially unchanged from the 5-repeat
 first pass (selection frequencies firmed up slightly, LOCO deltas moved
 by <0.005), so they look stable.
 
+> **These tables are the BASELINE basis only.** For the current numbers on
+> both bases, including the qualifying-only variant, see
+> **"Latest results"** at the bottom of this file -- that section is
+> authoritative. The narrative and interpretation here still hold; only
+> read the specific figures from the bottom table.
+
 ### What the "one-SE rule" is
 
 A standard way to pick a hyperparameter config that avoids chasing noise.
@@ -250,6 +256,65 @@ behavior (correlating with noise in the other PCs so the model can cancel
 it out). Its own LOCO (+0.0016) and permutation (0.0085) deltas are
 small, consistent with a minor supporting role rather than a driver.
 
+## Fitting population: the qualifying-only PCA variant
+
+The D11 HVG/PCA basis was originally fit on every cell except the fold's
+held-out lines and pool11. That INCLUDES ~25,400 cells from 39 cell lines
+that are not among the 138 and never appear in any train or test set, plus
+~1,100 cells from non-qualifying pools of qualifying lines. Not leakage
+(the held-out mask applies by `cell_line`, so every cell of a held-out
+line is dropped regardless of pool), but not the study population either.
+
+Both variants are now built and kept side by side:
+
+| | fit cells (one fold) | outputs |
+|---|---|---|
+| baseline | 243,066 | `*_full.csv`, unsuffixed tables |
+| qualifying-only | 217,211 | `*_qualonly.csv` |
+
+Fold assignments are byte-identical between the two runs (verified: 35,604
+rows each), so the comparison is like-for-like and any difference is
+attributable to the fitting population alone.
+
+**Result — pre-registered headline (donor_grouped, nested):**
+
+| | baseline | qualifying-only |
+|---|---|---|
+| regression, ridge, R2 | 0.6531 +/- 0.0211 | **0.6672 +/- 0.0124** |
+| classification, logistic_l2, ROC-AUC | 0.9470 +/- 0.0070 | 0.9483 +/- 0.0157 |
+
+Regression improves modestly (+0.014 R2, ~0.67 SD) and — more notably —
+its across-repeat SD nearly halves. Classification is a wash: AUC up a
+hair, balanced accuracy down a hair, SD doubled. So the extra 25,400
+foreign cells were adding noise to the regression basis rather than
+helping it.
+
+### Do NOT compare the two importance tables row by row
+
+The components REORDER between bases, so "PC2" does not mean the same
+thing in each. Correlating per-line coordinates across the 138 lines:
+
+| | closest match | \|r\| | |
+|---|---|---|---|
+| baseline PC1 | qualonly PC1 | 0.995 | same component |
+| baseline PC2 | qualonly **PC3** | 0.985 | same component |
+| qualonly PC2 | baseline PC2 | 0.564 | **a different component** |
+
+Read positionally, the qualonly table looks like the fit restriction
+cleaned the pool signal out of the strongest PC (eta2 by pool
+0.764 -> 0.114). It did not. The pool-associated axis MOVED from position
+2 to position 3 and became slightly *more* pool-associated
+(eta2 0.764 -> 0.832). What rose into position 2 is a genuinely different
+component that happens to be largely pool-independent (eta2 0.114) and
+strongly outcome-associated (Spearman rho -0.745 vs binary `success`,
+-0.809 vs continuous `diff_efficiency`).
+
+Explained variance is near-identical across bases
+(0.0539/0.0265/0.0259/0.0203 -> 0.0539/0.0268/0.0254/0.0203), i.e. PC2 and
+PC3 are near-tied, which is exactly the regime where ordering is unstable.
+**Align components by correlation before interpreting anything
+biologically.**
+
 ## Corrections from the audit
 
 After the analysis was complete, an independent Codex correctness audit
@@ -291,6 +356,104 @@ pair, for the same reason. The L1 tables remain the more informative ones
 (only L1 produces sparsity, so `regularized_to_zero` /
 `selection_frequency` are meaningful), but both are reported.
 
+## Second correctness review (variant plumbing + test pollution)
+
+A second independent Codex review, run specifically on the qualifying-only
+work, found two more defects. Recorded here because one of them means a
+previous entry in this README overstated what had been fixed.
+
+All of these share one root cause: **adding a `--suffix` variant required
+threading "which variant am I?" through several layers, and it was
+threaded through some but not others.** Every resulting failure produced
+plausible, non-crashing, wrong output.
+
+1. **Mixed-basis importance tables.** `--suffix` redirected the
+   fold-features input and the output filenames, but
+   `load_full_fit_features()` always read 005's baseline global PCA. So a
+   single `_qualonly` table had fold-level columns (LOCO, permutation,
+   selection frequency) from one basis and full-fit columns (coefficient,
+   SHAP, univariate, technical covariate) from another. The tell was that
+   the variant's `univariate_spearman` column was byte-identical to
+   baseline. Fixed by parameterizing `005` (`--restrict-to-qualifying`,
+   `--suffix`) and threading `pca_csv` through every full-fit consumer.
+2. **That fix was incomplete, and was described here as complete.**
+   `compute_shap_like` was still calling `load_full_fit_features()` with
+   no argument, so `shap_mean_abs` stayed on the baseline basis. The edit
+   had been applied with a string replacement whose pattern did not match,
+   and string replacement fails silently. Re-applied with an assertion
+   that the edit landed plus a check that no no-arg call survives.
+3. **The test suite was writing into the repo.** `run_all` saves
+   `nested_selections_{task}.csv` to the package directory, and
+   `test_run_experiment.py`'s fixture patched its inputs but not that
+   path. Every `pytest` run overwrote the committed
+   `nested_selections_regression.csv` with 32 rows of synthetic fixture
+   data (`k=1, alpha=1.0`, and `repeat=1` for LOCO/LODO, which is
+   structurally impossible) — and that corrupted file had been committed.
+   `run_all` now takes an injectable `out_dir`, the fixture redirects it,
+   and a regression test asserts `run_all` never touches committed files.
+4. **`_infer_n_repeats` read a hardcoded table.** It always loaded
+   `fold_features_D11_full.csv` (falling back silently to
+   `fold_features_D11.csv`), not the table the run was using, so the
+   one-SE tolerance could come from an unrelated experiment. Harmless in
+   fact here — both runs share fold assignments, so `n_repeats` was 10
+   either way — but nothing enforced that. Now required and passed
+   explicitly; a missing file is a loud error.
+5. **`logistic_l1` was not reproducible.** `saga` is a stochastic solver
+   and no `random_state` was set, so coefficients drifted run to run
+   (measured max|diff| ~5.7e-4), producing spurious 4th-decimal diffs on
+   re-runs. `models.SEED` now pins both logistic factories.
+
+A guard now prevents defect 1 from recurring silently: with `--suffix`
+set and no explicit basis, the matching suffixed basis is REQUIRED, and
+its absence is a hard error naming the command that generates it.
+
+## D30 readiness — NOT ready (read before starting D30 -> D52)
+
+The earlier claim in "Architecture" that feature extraction is simply
+"timepoint-parameterized" is too optimistic. What is genuinely reusable:
+`folds.py` (fold construction is timepoint-independent — same 138 lines,
+same D52 labels), `models.py`, most of `harness.py`, and
+`run_experiment.run_all` given a correct feature table.
+
+What must change first, ranked by risk. The loud failures are fine; the
+SILENT ones are the danger, and they are marked.
+
+1. **Cell-type schema differs and is hardcoded.** D11 has 3 types
+   (`FPP, NB, P_FPP`); **D30 has 7** (`DA, Epen1, FPP, P_FPP, Sert,
+   U_Neur1, U_Neur2`). `harness.ALL_PROPORTION_COLS` /
+   `MODEL_PROPORTION_COLS` hardcode the D11 three. Fails loudly on a
+   missing column, but the compositional reference category must be
+   chosen and documented for 7 types, not patched ad hoc.
+2. **SILENT: extraction is hardcoded to D11.** `run_feature_extraction.py`
+   passes `"D11"` to `load_cell_metadata` and
+   `compute_pca_features_for_fold` and names outputs
+   `fold_features_D11{suffix}.csv`. Changing only the output filename
+   would produce a plausible file named D30 containing D11 features.
+3. **SILENT: resume has no provenance.** The incremental-write resume keys
+   only on `(scheme, repeat, fold)`. It does not record timepoint,
+   fitting population, or PCA settings, so reusing a destination after
+   changing any of those silently keeps stale rows. Write a provenance
+   header/sidecar and refuse to resume across a settings change.
+4. **SILENT: full-fit inputs are D11-specific.** `005` is hardwired to
+   `DAY11_FILE` and `d11_*` output names; `feature_importance.py`
+   hardcodes `D11_PCA_CSV`, `D11_PROPORTIONS_CSV` and derives the variant
+   basis as `d11_pca_coords_per_line{suffix}.csv`. Passing D30 fold
+   features *unsuffixed* would combine D30 fold-level values with D11
+   global PCA and D11 proportions. (A suffixed call would fail loudly on
+   the missing `d11_...{suffix}` file.) Make these explicit parameters.
+5. **`run_variant.py` input is hardcoded** to `fold_features_D11{suffix}`.
+6. **Decide whether excluding pool11 is still justified at D30.** It is
+   currently inherited from a D11 sequencing-depth observation without
+   re-examination.
+
+Note the qualifying `(cell_line, pool)` combos ARE the same 159 across
+138 lines at both timepoints (qualification already requires >=10 cells at
+D11 and D30 and D52), but the per-combo cell COUNTS are not: zero of 159
+combos has identical D11 and D30 counts (D11 range 25-14,640; D30 range
+13-13,112; correlation 0.748). Sampling precision therefore differs
+substantially, which is a further reason D11 proportions must never be
+reused as D30 features.
+
 ## Pool-correction dropped
 
 Investigated (with an independent Codex review) why pool-correction cut
@@ -330,6 +493,8 @@ stage. `features.py`/`harness.py` still support it if revisited.
 
 ## Reproducibility
 - Fixed seeds; persist actual fold assignments (line IDs per scheme × repeat × fold) to a file, not just the seed.
+- `models.SEED` pins `random_state` on both logistic factories. `saga` (used by `logistic_l1`) is stochastic; unseeded it drifted ~5.7e-4 between runs, which showed up as spurious 4th-decimal diffs in regenerated importance tables.
+- Fold features are written incrementally per fold and a run can be resumed; see the D30 section for the provenance gap that makes resume unsafe across a settings change.
 
 ## Scope/cost warning
 Full parallel grid (2 groupings × 2 tuning × 2 corrections × 2 model families, repeated K-fold, + LOCO/LODO) means potentially hundreds of fold-specific PCA refits (~90s each in `005`). Time one fold first; cache fold-specific fits before committing to the full run.
@@ -340,7 +505,7 @@ Full parallel grid (2 groupings × 2 tuning × 2 corrections × 2 model families
 
 ## Architecture (Open-Closed + reusable for D30→D52)
 - **Model registry, not conditionals**: a list of `ModelSpec(name, estimator_factory, param_grid)` entries (Ridge/Lasso/L2-logistic/L1-logistic to start). The CV harness only ever calls the sklearn estimator interface (`.fit`/`.predict`/`.predict_proba`) generically — adding a model later (e.g. random forest) = one new registry entry, zero changes to harness code.
-- **Feature extraction (timepoint-parameterized) vs. CV harness (timepoint-agnostic)**: feature extraction takes a timepoint (D11 now, D30 later — same 138 qualifying lines, since the qualifying list already requires ≥10 cells at D11 *and* D30 *and* D52) and a fold's train/held-out line split, returns feature matrices. The CV/tuning/metrics harness takes `X_train, y_train, X_test, y_test` + the model registry and is completely agnostic to which timepoint produced the features. D30→D52 later = swap the feature-extraction call, harness untouched.
+- **Feature extraction (timepoint-parameterized) vs. CV harness (timepoint-agnostic)** — *aspirational; see "D30 readiness" above for what actually still hardcodes D11*: feature extraction takes a timepoint (D11 now, D30 later — same 138 qualifying lines, since the qualifying list already requires ≥10 cells at D11 *and* D30 *and* D52) and a fold's train/held-out line split, returns feature matrices. The CV/tuning/metrics harness takes `X_train, y_train, X_test, y_test` + the model registry and is completely agnostic to which timepoint produced the features. D30→D52 later = swap the feature-extraction call, harness untouched.
 
 ## Files
 - `features.py` — feature-extraction, parameterized by timepoint (D11 now; reusable for D30).
@@ -352,3 +517,75 @@ Full parallel grid (2 groupings × 2 tuning × 2 corrections × 2 model families
 
 ## Verify
 - Per-fold fitting cell counts stay large; fold assignments reproducible; classification metrics only where both classes present; repeated-CV reported per-repeat not pooled; regression predictions checked against [0,1].
+
+## Latest results
+
+Authoritative current numbers. Regenerated 2026-09-09 in a single clean
+run on one consistent code state (after the seed pin and the fixes in
+"Second correctness review"), so no figure here is a mix of pre- and
+post-fix runs. Everything below is the pre-registered configuration:
+**donor_grouped grouping, nested CV, no pool-correction**.
+
+### Headline (pre-registered model per task)
+
+| task | model | baseline | qualifying-only |
+|---|---|---|---|
+| regression | **ridge** | R2 = 0.6531 +/- 0.0211 | **R2 = 0.6672 +/- 0.0124** |
+| classification | **logistic_l2** | ROC-AUC = 0.9470 +/- 0.0070 | **ROC-AUC = 0.9483 +/- 0.0157** |
+
+### Secondary (L1 variants -- NOT the headline; see "Results distillation")
+
+| task | model | baseline | qualifying-only |
+|---|---|---|---|
+| regression | lasso | R2 = 0.6685 +/- 0.0150 | R2 = 0.6725 +/- 0.0108 |
+| classification | logistic_l1 | ROC-AUC = 0.9512 +/- 0.0081 | ROC-AUC = 0.9500 +/- 0.0060 |
+
+Restricting the PCA fit to the study population helps regression modestly
+(+0.014 R2) and roughly halves its across-repeat SD; classification is a
+wash (AUC +0.001, SD doubled). Full discussion in "Fitting population"
+above, including why the two importance tables must NOT be compared by PC
+label.
+
+### Configurations selected
+
+Nested CV re-selects per outer fold, so `modal` is the most common choice
+across 50 folds, not "the" configuration -- the spread is wide (see
+"Regenerated results" note below). The one-SE column is the single config
+used for the feature-importance tables.
+
+| run | model | modal nested config | one-SE config (importance tables) |
+|---|---|---|---|
+| baseline | ridge | k=4, alpha=0.01 | k=5, alpha=0.1 |
+| baseline | lasso | k=5, alpha=0.001 | k=5, alpha=0.001 |
+| baseline | logistic_l2 | k=2, C=100.0 | k=4, C=0.01 |
+| baseline | logistic_l1 | k=2, C=1.0 | k=2, C=0.1 |
+| qualifying-only | ridge | k=6, alpha=1.0 | k=6, alpha=0.1 |
+| qualifying-only | lasso | k=6, alpha=0.001 | k=6, alpha=0.001 |
+| qualifying-only | logistic_l2 | k=8, C=0.01 | k=8, C=0.01 |
+| qualifying-only | logistic_l1 | k=0, C=0.1 | k=3, C=0.1 |
+
+Note `logistic_l1` selects **k=0** most often on the qualifying-only basis
+-- i.e. the modal nested model uses the cell-type proportions and no PCs
+at all, and still reaches AUC 0.950. Consistent with the standing finding
+that the proportions (`phat_NB` especially) carry most of the
+classification signal.
+
+### Hyperparameter selection is unstable -- read single-config tables with that in mind
+
+Recovering the per-fold selections (they were previously computed and
+dropped) shows no configuration dominates. Across 50 outer folds the modal
+choice wins only ~9-10 times, spread over 13-19 distinct configs, with `C`
+ranging the full four orders of magnitude. Full per-fold record in
+`nested_selections_{task}{suffix}.csv` (516 rows each). This is why the
+headline is pre-registered and why the one-SE rule is used -- and why any
+single-config coefficient table is one draw from a wide distribution.
+
+### Files backing this section
+
+| | baseline | qualifying-only |
+|---|---|---|
+| grids | `results_{task}.csv` | `results_{task}_qualonly.csv` |
+| per-fold selections | `nested_selections_{task}.csv` | `nested_selections_{task}_qualonly.csv` |
+| importance | `feature_importance_table_{task}_{model}.csv` | `..._{model}_qualonly.csv` |
+| fold features | `fold_features_D11_full.csv` | `fold_features_D11_qualonly.csv` |
+| global PCA basis | `metadata_eda/d11_pca_coords_per_line.csv` | `..._qualonly.csv` |
