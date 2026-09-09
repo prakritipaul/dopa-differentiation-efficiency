@@ -3,8 +3,8 @@
 Companion to `modeling/README.md`. Covers the biological reading of the
 D11 HVG/PCA basis used as model features, focused on **PC1**.
 
-Loadings live in `metadata_eda/d11_pca_gene_loadings.csv` (baseline basis)
-and `metadata_eda/d11_pca_gene_loadings_qualonly.csv` (qualifying-only basis) — all 10 PCs x 2000 HVGs,
+Loadings live in `metadata_eda/pca/d11_pca_gene_loadings.csv` (baseline basis)
+and `metadata_eda/pca/d11_pca_gene_loadings_qualonly.csv` (qualifying-only basis) — all 10 PCs x 2000 HVGs,
 long format, sorted by |loading| within each PC. Produced by
 `005_d11_pca_features.py`.
 
@@ -206,7 +206,7 @@ genes use older symbols — `FAM64A` = *PIMREG*, `HN1` = *JPT1*, `MLF1IP` =
 
 ## Other components
 
-`metadata_eda/d11_pca_gene_loadings.csv` carries all 10 PCs. Two cautions before
+`metadata_eda/pca/d11_pca_gene_loadings.csv` carries all 10 PCs. Two cautions before
 interpreting them:
 
 - **PC2 and PC3 are near-tied in explained variance** (0.0265 / 0.0259) and

@@ -41,7 +41,7 @@ import pandas as pd
 from scipy import stats
 
 OUT_DIR = Path(__file__).parent / "metadata_eda"
-QUALIFYING_COMBOS_CSV = OUT_DIR / "qualifying_cell_line_pool_min10_per_timepoint.csv"
+QUALIFYING_COMBOS_CSV = OUT_DIR / "cohort/qualifying_cell_line_pool_min10_per_timepoint.csv"
 
 
 def _load_module(name: str):
@@ -157,7 +157,7 @@ def plot_associations(pca_assoc: pd.DataFrame, prop_assoc: pd.DataFrame) -> None
         ax.invert_yaxis()
 
     fig.tight_layout()
-    fig.savefig(OUT_DIR / "plot_technical_covariate_correlations.png", dpi=150)
+    fig.savefig(OUT_DIR / "plots/plot_technical_covariate_correlations.png", dpi=150)
     plt.close(fig)
 
 
@@ -169,11 +169,11 @@ def main() -> None:
     print(f"{len(combo)} qualifying (cell_line, pool) combos.")
 
     pca_assoc = compute_associations(combo, PC_COLS)
-    pca_assoc.to_csv(OUT_DIR / "technical_covariate_correlations_pca_uncorrected.csv", index=False)
+    pca_assoc.to_csv(OUT_DIR / "technical/technical_covariate_correlations_pca_uncorrected.csv", index=False)
 
     prop_targets = [c for c in combo.columns if c.startswith("phat_")]
     prop_assoc = compute_associations(combo, prop_targets)
-    prop_assoc.to_csv(OUT_DIR / "technical_covariate_correlations_celltype_proportions.csv", index=False)
+    prop_assoc.to_csv(OUT_DIR / "technical/technical_covariate_correlations_celltype_proportions.csv", index=False)
 
     print("\n=== Uncorrected PCs vs. technical covariates ===")
     print(pca_assoc.sort_values("eta_sq_pool", ascending=False).to_string(index=False))

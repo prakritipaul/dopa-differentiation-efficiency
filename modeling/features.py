@@ -27,7 +27,7 @@ import h5py
 import pandas as pd
 
 REPO_ROOT = Path(__file__).parent.parent
-QUALIFYING_COMBOS_CSV = REPO_ROOT / "metadata_eda" / "qualifying_cell_line_pool_min10_per_timepoint.csv"
+QUALIFYING_COMBOS_CSV = REPO_ROOT / "metadata_eda" / "cohort/qualifying_cell_line_pool_min10_per_timepoint.csv"
 
 TIMEPOINT_FILES = {
     "D11": "/Users/prakritipaul/Documents/2021_jerber/day11.h5",

@@ -1,9 +1,29 @@
 # D11 -> D52 modeling: CV/modeling plan
 
 Predicting D52 differentiation efficiency from D11 features (138 cell
-lines, from `metadata_eda/qualifying_cell_line_pool_min10_per_timepoint.csv`
-and `metadata_eda/d52_diff_efficiency_label.csv`). Designed to generalize
+lines, from `metadata_eda/cohort/qualifying_cell_line_pool_min10_per_timepoint.csv`
+and `metadata_eda/cohort/d52_diff_efficiency_label.csv`). Designed to generalize
 to a D30 -> D52 baseline model later (see Architecture).
+
+## Layout
+
+```
+modeling/
+  *.py           the package: folds, features, models, harness,
+                 run_* entry points, feature_importance
+  tests/         pytest suite (30 fast + 1 slow integration test)
+  fold_data/     per-fold feature tables and fold assignments
+                 (`_full` = baseline basis, `_qualonly` = restricted-fit variant)
+  results/       CV grids, nested per-fold selections, feature-importance tables
+  docs/          PCA_interpretation.md, feature_importance_plan.md,
+                 pool_correction_investigation.md
+  plots/         diagnostic figures
+  archive/       superseded first-pass artifacts, kept for provenance only --
+                 nothing reads these
+```
+
+Writers create their own subdirectory, so a fresh clone or a redirected
+`out_dir` works without manual `mkdir`.
 
 ## First-pass prototype scope (decided while implementing)
 
@@ -82,7 +102,7 @@ Caveat on LOCO: its metrics pool all 138 single-line fold predictions (a
 one-line fold can't support per-fold metrics), so it has no variance
 estimate and isn't perfectly comparable to the repeat-averaged schemes.
 
-**Caveat on the regression R2 (checked, see `pool_correction_investigation.md`
+**Caveat on the regression R2 (checked, see `docs/pool_correction_investigation.md`
 "Follow-up"): mostly reflects correctly separating success from failure,
 not fine-grained precision.** The outcome is bimodal (42 failures at
 0-0.185, 96 successes at 0.221-~0.92, real gap at the threshold).
@@ -93,8 +113,8 @@ failure clump's true range). Trust this model for success/failure
 classification; don't trust the regression output as a precise efficiency
 estimate, especially for predicted failures.
 
-Visual confirmation in `plot_regression_diagnostics.png` /
-`plot_classification_diagnostics.png` (predicted-vs-true and residual
+Visual confirmation in `plots/plot_regression_diagnostics.png` /
+`plots/plot_classification_diagnostics.png` (predicted-vs-true and residual
 scatter for regression; ROC curve, confusion matrix, and predicted-
 probability histogram for classification, all donor_grouped/nested/
 repeat 0). Two things visible there that the numbers alone didn't show:
@@ -110,8 +130,8 @@ repeat 0). Two things visible there that the numbers alone didn't show:
 
 ## Which features matter (feature importance)
 
-`feature_importance.py` -> `feature_importance_table_{task}_{model}.csv`.
-Design and caveats in `feature_importance_plan.md`. Results below are on
+`feature_importance.py` -> `results/feature_importance_table_{task}_{model}.csv`.
+Design and caveats in `docs/feature_importance_plan.md`. Results below are on
 the full 258-fold data; they were essentially unchanged from the 5-repeat
 first pass (selection frequencies firmed up slightly, LOCO deltas moved
 by <0.005), so they look stable.
@@ -351,7 +371,7 @@ quietly patched, since two of them changed reported numbers.
    variants reported as secondary.
 
 Feature-importance tables are now produced for **all four** models
-(`feature_importance_table_{task}_{model}.csv`) rather than just the L1
+(`results/feature_importance_table_{task}_{model}.csv`) rather than just the L1
 pair, for the same reason. The L1 tables remain the more informative ones
 (only L1 produces sparsity, so `regularized_to_zero` /
 `selection_frequency` are meaningful), but both are reported.
@@ -383,7 +403,7 @@ plausible, non-crashing, wrong output.
    and string replacement fails silently. Re-applied with an assertion
    that the edit landed plus a check that no no-arg call survives.
 3. **The test suite was writing into the repo.** `run_all` saves
-   `nested_selections_{task}.csv` to the package directory, and
+   `results/nested_selections_{task}.csv` to the package directory, and
    `test_run_experiment.py`'s fixture patched its inputs but not that
    path. Every `pytest` run overwrote the committed
    `nested_selections_regression.csv` with 32 rows of synthetic fixture
@@ -392,7 +412,7 @@ plausible, non-crashing, wrong output.
    `run_all` now takes an injectable `out_dir`, the fixture redirects it,
    and a regression test asserts `run_all` never touches committed files.
 4. **`_infer_n_repeats` read a hardcoded table.** It always loaded
-   `fold_features_D11_full.csv` (falling back silently to
+   `fold_data/fold_features_D11_full.csv` (falling back silently to
    `fold_features_D11.csv`), not the table the run was using, so the
    one-SE tolerance could come from an unrelated experiment. Harmless in
    fact here — both runs share fold assignments, so `n_repeats` was 10
@@ -457,10 +477,10 @@ reused as D30 features.
 ## What PC1 is: a D11 proliferation axis
 
 > Full write-up, loadings tables and literature sources:
-> **`modeling/PCA_interpretation.md`**. Summary below.
+> **`modeling/docs/PCA_interpretation.md`**. Summary below.
 
 `005_d11_pca_features.py` now also writes
-`metadata_eda/d11_pca_gene_loadings{suffix}.csv` -- all 10 PCs x 2000 HVGs,
+`metadata_eda/pca/d11_pca_gene_loadings{suffix}.csv` -- all 10 PCs x 2000 HVGs,
 long format, sorted by |loading| within each PC.
 
 PC1 (5.4% of HVG variance, Spearman rho = **+0.563** vs D52 efficiency, so
@@ -503,7 +523,7 @@ Caveats:
 
 Investigated (with an independent Codex review) why pool-correction cut
 regression R2 by ~0.10-0.12 but barely touched classification AUC. No
-single settled explanation emerged -- see `pool_correction_investigation.md`
+single settled explanation emerged -- see `docs/pool_correction_investigation.md`
 for the concise summary (my reasoning, Codex's oracle-test refutation of
 my leading theory, its alternative explanation, and two real
 implementation issues found along the way). Decision: drop pool-correction
@@ -621,7 +641,7 @@ Recovering the per-fold selections (they were previously computed and
 dropped) shows no configuration dominates. Across 50 outer folds the modal
 choice wins only ~9-10 times, spread over 13-19 distinct configs, with `C`
 ranging the full four orders of magnitude. Full per-fold record in
-`nested_selections_{task}{suffix}.csv` (516 rows each). This is why the
+`results/nested_selections_{task}{suffix}.csv` (516 rows each). This is why the
 headline is pre-registered and why the one-SE rule is used -- and why any
 single-config coefficient table is one draw from a wide distribution.
 
@@ -629,8 +649,8 @@ single-config coefficient table is one draw from a wide distribution.
 
 | | baseline | qualifying-only |
 |---|---|---|
-| grids | `results_{task}.csv` | `results_{task}_qualonly.csv` |
-| per-fold selections | `nested_selections_{task}.csv` | `nested_selections_{task}_qualonly.csv` |
-| importance | `feature_importance_table_{task}_{model}.csv` | `..._{model}_qualonly.csv` |
-| fold features | `fold_features_D11_full.csv` | `fold_features_D11_qualonly.csv` |
-| global PCA basis | `metadata_eda/d11_pca_coords_per_line.csv` | `..._qualonly.csv` |
+| grids | `results/results_{task}.csv` | `results/results_{task}_qualonly.csv` |
+| per-fold selections | `results/nested_selections_{task}.csv` | `results/nested_selections_{task}_qualonly.csv` |
+| importance | `results/feature_importance_table_{task}_{model}.csv` | `results/..._{model}_qualonly.csv` |
+| fold features | `fold_data/fold_features_D11_full.csv` | `fold_data/fold_features_D11_qualonly.csv` |
+| global PCA basis | `metadata_eda/pca/d11_pca_coords_per_line.csv` | `..._qualonly.csv` |

@@ -45,7 +45,7 @@ Two more EDA passes requested to round out the D11 feature work
 
 ## Task 1: `007_d11_cell_counts_per_line.py`
 
-Cheap, no h5 access needed — `metadata_eda/cell_line_donor_pool_timepoint_n_cells.csv`
+Cheap, no h5 access needed — `metadata_eda/cohort/cell_line_donor_pool_timepoint_n_cells.csv`
 (from `001_eda.py`) already has per-`(cell_line, pool, timepoint)` counts
 for *every* D11 cell line (not just the 138 qualifying ones).
 
@@ -56,10 +56,10 @@ for *every* D11 cell line (not just the 138 qualifying ones).
   `qualifying_cell_line_pool_min10_per_timepoint.csv` (cross-reference,
   since that list required >=10 cells at D11 *and* D30 *and* D52 in the
   same pool — a line can have plenty of D11 cells and still not qualify).
-- Save `metadata_eda/d11_cell_counts_per_line.csv`, sorted by
+- Save `metadata_eda/cohort/d11_cell_counts_per_line.csv`, sorted by
   `total_n_cells_D11` descending; print summary stats (how many lines
   split across >1 pool at D11, min/median/max total).
-- `metadata_eda/plot_d11_cell_counts_per_line.png` — sorted bar chart.
+- `metadata_eda/plots/plot_d11_cell_counts_per_line.png` — sorted bar chart.
 
 ## Task 2+3: `008_technical_covariate_associations.py`
 

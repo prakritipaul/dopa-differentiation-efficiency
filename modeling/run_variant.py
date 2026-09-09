@@ -54,13 +54,14 @@ def compare_headline(task: str, baseline_csv: Path, variant: pd.DataFrame) -> pd
 
 
 def main(suffix: str) -> None:
-    fold_features_csv = OUT_DIR / f"fold_features_D11{suffix}.csv"
+    fold_features_csv = OUT_DIR / f"fold_data/fold_features_D11{suffix}.csv"
     if not fold_features_csv.exists():
         raise SystemExit(f"missing {fold_features_csv} -- run the extraction with out_suffix={suffix!r} first")
 
     for task in ("regression", "classification"):
         results = run_all(task, fold_features_csv, out_suffix=suffix)
-        out_path = OUT_DIR / f"results_{task}{suffix}.csv"
+        out_path = OUT_DIR / f"results/results_{task}{suffix}.csv"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
         results.to_csv(out_path, index=False)
 
         print(f"\n=== {task.upper()}: pre-registered headline "

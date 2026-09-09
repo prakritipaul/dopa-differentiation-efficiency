@@ -17,8 +17,8 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 OUT_DIR = Path(__file__).parent / "metadata_eda"
-ALL_COUNTS_CSV = OUT_DIR / "cell_line_donor_pool_timepoint_n_cells.csv"
-QUALIFYING_COMBOS_CSV = OUT_DIR / "qualifying_cell_line_pool_min10_per_timepoint.csv"
+ALL_COUNTS_CSV = OUT_DIR / "cohort/cell_line_donor_pool_timepoint_n_cells.csv"
+QUALIFYING_COMBOS_CSV = OUT_DIR / "cohort/qualifying_cell_line_pool_min10_per_timepoint.csv"
 
 
 def build_table() -> pd.DataFrame:
@@ -60,7 +60,7 @@ def plot_counts(per_line: pd.DataFrame) -> None:
     ax.set_xlabel("total_n_cells_D11")
     ax.set_title("D11 cells per cell line (blue = among the 138 qualifying lines)")
     fig.tight_layout()
-    fig.savefig(OUT_DIR / "plot_d11_cell_counts_per_line.png", dpi=150)
+    fig.savefig(OUT_DIR / "plots/plot_d11_cell_counts_per_line.png", dpi=150)
     plt.close(fig)
 
 
@@ -81,7 +81,7 @@ def plot_histogram(per_line: pd.DataFrame) -> None:
     ax.set_title("Distribution of D11 cells per cell line")
     ax.legend()
     fig.tight_layout()
-    fig.savefig(OUT_DIR / "plot_d11_cell_counts_histogram.png", dpi=150)
+    fig.savefig(OUT_DIR / "plots/plot_d11_cell_counts_histogram.png", dpi=150)
     plt.close(fig)
 
 
@@ -89,7 +89,7 @@ def main() -> None:
     OUT_DIR.mkdir(exist_ok=True)
 
     per_line = build_table()
-    per_line.to_csv(OUT_DIR / "d11_cell_counts_per_line.csv", index=False)
+    per_line.to_csv(OUT_DIR / "cohort/d11_cell_counts_per_line.csv", index=False)
 
     n_multi_pool = (per_line["n_pools_D11"] > 1).sum()
     print(f"{len(per_line)} distinct D11 cell lines; {n_multi_pool} span more than one pool at D11.")

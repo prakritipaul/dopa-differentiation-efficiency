@@ -30,7 +30,7 @@ import pandas as pd
 
 DAY52_FILE = "/Users/prakritipaul/Documents/2021_jerber/day52.h5"
 OUT_DIR = Path(__file__).parent / "metadata_eda"
-QUALIFYING_COMBOS_CSV = OUT_DIR / "qualifying_cell_line_pool_min10_per_timepoint.csv"
+QUALIFYING_COMBOS_CSV = OUT_DIR / "cohort/qualifying_cell_line_pool_min10_per_timepoint.csv"
 DIFFERENTIATED_CELLTYPES = {"DA", "Sert"}
 
 
@@ -76,7 +76,7 @@ def plot_label(label: pd.DataFrame) -> None:
     axes[1].set_title("Distribution of D52 diff_efficiency")
 
     fig.tight_layout()
-    fig.savefig(OUT_DIR / "plot_d52_diff_efficiency.png", dpi=150)
+    fig.savefig(OUT_DIR / "plots/plot_d52_diff_efficiency.png", dpi=150)
     plt.close(fig)
 
 
@@ -93,7 +93,7 @@ def main() -> None:
     label = label.rename(columns={"phat": "diff_efficiency", "se": "diff_efficiency_se"})
     label = label.sort_values("cell_line").reset_index(drop=True)
 
-    label.to_csv(OUT_DIR / "d52_diff_efficiency_label.csv", index=False)
+    label.to_csv(OUT_DIR / "cohort/d52_diff_efficiency_label.csv", index=False)
 
     print(f"{len(label)} cell lines with a D52 diff_efficiency label.")
     print(label["diff_efficiency"].describe().to_string())

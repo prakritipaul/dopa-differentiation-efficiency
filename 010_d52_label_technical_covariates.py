@@ -26,7 +26,7 @@ from scipy import stats
 
 DAY52_FILE = "/Users/prakritipaul/Documents/2021_jerber/day52.h5"
 OUT_DIR = Path(__file__).parent / "metadata_eda"
-QUALIFYING_COMBOS_CSV = OUT_DIR / "qualifying_cell_line_pool_min10_per_timepoint.csv"
+QUALIFYING_COMBOS_CSV = OUT_DIR / "cohort/qualifying_cell_line_pool_min10_per_timepoint.csv"
 DIFFERENTIATED_CELLTYPES = {"DA", "Sert"}
 NUMERIC_COVARIATES = ["n_cells", "mean_total_counts", "mean_n_genes_detected"]
 
@@ -93,7 +93,7 @@ def main() -> None:
         row[f"p_{cov}"] = p
     row["eta_sq_pool"] = m008.eta_squared_by_pool(combo["diff_efficiency"], combo["pool"])
     assoc = pd.DataFrame([row])
-    assoc.to_csv(OUT_DIR / "technical_covariate_correlations_d52_label.csv", index=False)
+    assoc.to_csv(OUT_DIR / "technical/technical_covariate_correlations_d52_label.csv", index=False)
 
     print(assoc.to_string(index=False))
     print(
@@ -117,7 +117,7 @@ def main() -> None:
     axes[1].tick_params(axis="x", labelsize=7, rotation=45)
 
     fig.tight_layout()
-    fig.savefig(OUT_DIR / "plot_d52_label_technical_covariates.png", dpi=150)
+    fig.savefig(OUT_DIR / "plots/plot_d52_label_technical_covariates.png", dpi=150)
     plt.close(fig)
 
     print(f"\nSaved CSV and plot to {OUT_DIR}")

@@ -50,7 +50,7 @@ from sklearn.decomposition import PCA
 DAY11_FILE = "/Users/prakritipaul/Documents/2021_jerber/day11.h5"
 DONOR_RE = re.compile(r"^(HPSI\d+i)-")
 OUT_DIR = Path(__file__).parent / "metadata_eda"
-QUALIFYING_COMBOS_CSV = OUT_DIR / "qualifying_cell_line_pool_min10_per_timepoint.csv"
+QUALIFYING_COMBOS_CSV = OUT_DIR / "cohort/qualifying_cell_line_pool_min10_per_timepoint.csv"
 
 N_HVG = 2000
 N_HVG_BINS = 20
@@ -204,7 +204,7 @@ def plot_scree(explained_variance_ratio: np.ndarray, out_suffix: str = "") -> No
     ax.set_title("D11 PCA scree plot")
     ax.set_xticks(x)
     fig.tight_layout()
-    fig.savefig(OUT_DIR / f"plot_d11_pca_scree{out_suffix}.png", dpi=150)
+    fig.savefig(OUT_DIR / f"plots/plot_d11_pca_scree{out_suffix}.png", dpi=150)
     plt.close(fig)
 
 
@@ -215,7 +215,7 @@ def plot_scatter(line_level: pd.DataFrame, out_suffix: str = "") -> None:
     ax.set_ylabel("PC2 (line-level mean)")
     ax.set_title("D11 PCA: per-cell-line PC1 vs PC2")
     fig.tight_layout()
-    fig.savefig(OUT_DIR / f"plot_d11_pca_scatter{out_suffix}.png", dpi=150)
+    fig.savefig(OUT_DIR / f"plots/plot_d11_pca_scatter{out_suffix}.png", dpi=150)
     plt.close(fig)
 
 
@@ -270,7 +270,7 @@ def main(restrict_fit_to_qualifying: bool = False, out_suffix: str = "") -> None
             "var": var[hvg_idx],
         }
     )
-    hvg_table.to_csv(OUT_DIR / f"d11_hvg_genes{out_suffix}.csv", index=False)
+    hvg_table.to_csv(OUT_DIR / f"pca/d11_hvg_genes{out_suffix}.csv", index=False)
 
     print("Pass 2/2: extracting HVG-only expression matrix (all D11 cells)...")
     X_hvg = extract_hvg_matrix(DAY11_FILE, hvg_idx)
@@ -301,12 +301,12 @@ def main(restrict_fit_to_qualifying: bool = False, out_suffix: str = "") -> None
     loadings_long = loadings_long.sort_values(
         ["PC", "abs_loading"], ascending=[True, False]
     ).reset_index(drop=True)
-    loadings_long.to_csv(OUT_DIR / f"d11_pca_gene_loadings{out_suffix}.csv", index=False)
+    loadings_long.to_csv(OUT_DIR / f"pca/d11_pca_gene_loadings{out_suffix}.csv", index=False)
     print(f"Saved gene loadings for {N_PCS} PCs x {len(hvg_idx)} HVGs.")
 
     pc_cols = [f"PC{i}" for i in range(1, N_PCS + 1)]
     variance_table = pd.DataFrame({"PC": pc_cols, "explained_variance_ratio": explained_variance_ratio})
-    variance_table.to_csv(OUT_DIR / f"d11_pca_variance_explained{out_suffix}.csv", index=False)
+    variance_table.to_csv(OUT_DIR / f"pca/d11_pca_variance_explained{out_suffix}.csv", index=False)
     print(variance_table)
 
     pc_df = pd.concat([line_pool, pd.DataFrame(pcs, columns=pc_cols)], axis=1)
@@ -317,10 +317,10 @@ def main(restrict_fit_to_qualifying: bool = False, out_suffix: str = "") -> None
     # 006_d11_pca_variance_vs_se.py to check these features the same way
     # 004 checks cell type proportions (variance across lines vs. SE).
     pc_df_qualifying = pc_df.merge(qualifying, on=["cell_line", "pool"], how="inner")
-    pc_df_qualifying.to_csv(OUT_DIR / f"d11_pca_coords_per_cell_qualifying{out_suffix}.csv", index=False)
+    pc_df_qualifying.to_csv(OUT_DIR / f"pca/d11_pca_coords_per_cell_qualifying{out_suffix}.csv", index=False)
 
     line_level = collapse_to_line_level(pc_df, pc_cols, qualifying)
-    line_level.to_csv(OUT_DIR / f"d11_pca_coords_per_line{out_suffix}.csv", index=False)
+    line_level.to_csv(OUT_DIR / f"pca/d11_pca_coords_per_line{out_suffix}.csv", index=False)
 
     print(f"\n{line_level['cell_line'].nunique()} cell lines in the final PCA feature table.")
     print(line_level.head())

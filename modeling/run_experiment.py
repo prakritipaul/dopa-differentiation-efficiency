@@ -22,7 +22,7 @@ from modeling.folds import load_lines_with_label
 from modeling.harness import run_flat_cv, run_nested_cv, summarize_across_repeats
 
 OUT_DIR = Path(__file__).parent
-FOLD_FEATURES_CSV = OUT_DIR / "fold_features_D11_full.csv"
+FOLD_FEATURES_CSV = OUT_DIR / "fold_data/fold_features_D11_full.csv"
 
 # LOCO/LODO have a single "repeat" (repeat=0 for every fold), so
 # summarize_across_repeats naturally pools all their out-of-fold
@@ -127,9 +127,9 @@ def run_all(
         # Suffixed HERE rather than written unsuffixed and renamed afterwards:
         # the rename approach overwrote the committed baseline file before
         # moving it aside, which deleted the baseline selections from the repo.
-        selections[cols].drop_duplicates().to_csv(
-            (out_dir or OUT_DIR) / f"nested_selections_{task}{out_suffix}.csv", index=False
-        )
+        sel_path = (out_dir or OUT_DIR) / f"results/nested_selections_{task}{out_suffix}.csv"
+        sel_path.parent.mkdir(parents=True, exist_ok=True)
+        selections[cols].drop_duplicates().to_csv(sel_path, index=False)
 
     return pd.concat(summaries, ignore_index=True)
 

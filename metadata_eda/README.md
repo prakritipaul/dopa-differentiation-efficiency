@@ -6,6 +6,27 @@ al. dopaminergic neuron differentiation dataset
 (https://pmc.ncbi.nlm.nih.gov/articles/PMC7610897/): `day11.h5`, `day30.h5`,
 `day52.h5`.
 
+## Layout
+
+```
+metadata_eda/
+  cohort/        who is in the study: qualifying (cell_line, pool) combos,
+                 the D52 label, per-line/pool/timepoint cell counts
+  pca/           D11 PCA outputs -- per-line and per-cell coordinates, gene
+                 loadings, variance explained, HVG lists.
+                 `*_qualonly` = the qualifying-cells-only fitting variant
+  proportions/   D11 cell-type proportions + their sampling SE
+  qc/            QC summaries and metadata crosstabs
+  technical/     technical-covariate (pool/batch) association analyses
+  plots/         all figures
+```
+
+`cohort/qualifying_cell_line_pool_min10_per_timepoint.csv`,
+`cohort/d52_diff_efficiency_label.csv`,
+`proportions/d11_celltype_proportions_with_se.csv` and
+`pca/d11_pca_coords_per_line.csv` are the interface consumed by
+`modeling/` -- changing their paths means updating the modeling package.
+
 ## Source metadata fields (in the `.h5` files themselves)
 
 `obs` columns, beyond `celltype`:
@@ -36,41 +57,41 @@ Beyond `obs`:
 
 No other per-cell covariates (e.g. sex, age, batch date, sequencing depth as
 a stored field) are present in `obs` — total counts / genes detected had to
-be computed from `raw/X` directly (see `qc_summary_by_timepoint_celltype.csv`
+be computed from `raw/X` directly (see `qc/qc_summary_by_timepoint_celltype.csv`
 below).
 
 ## From `001_eda.py`
 
-- **`cell_line_donor_pool_timepoint_n_cells.csv`** — n_cells grouped by
+- **`cohort/cell_line_donor_pool_timepoint_n_cells.csv`** — n_cells grouped by
   `donor, cell_line, timepoint, pool`.
-- **`cell_line_donor_pool_timepoint_celltype_n_cells.csv`** — same, with
+- **`cohort/cell_line_donor_pool_timepoint_celltype_n_cells.csv`** — same, with
   `celltype` added as an extra grouping column.
 
 ## From `002_metadata_eda.py`
 
-- **`metadata_crosstab_treatment.csv`** — n_cells by `timepoint x treatment`.
+- **`qc/metadata_crosstab_treatment.csv`** — n_cells by `timepoint x treatment`.
   Surfaces that `treatment` is `NONE` for D11/D30 but `NONE`/`ROT` for D52
   (the paper's rotenone oxidative-stress condition).
-- **`metadata_crosstab_celltype.csv`** — n_cells by `timepoint x celltype`.
-- **`metadata_crosstab_celltype_by_cluster.csv`** — n_cells by
+- **`qc/metadata_crosstab_celltype.csv`** — n_cells by `timepoint x celltype`.
+- **`qc/metadata_crosstab_celltype_by_cluster.csv`** — n_cells by
   `timepoint x cluster_id x celltype`, to see how the numeric Leiden/Louvain
   `cluster_id` maps onto annotated cell types.
-- **`qc_summary_by_timepoint_celltype.csv`** — `describe()` (count, mean,
+- **`qc/qc_summary_by_timepoint_celltype.csv`** — `describe()` (count, mean,
   std, min/25/50/75/max) of `total_counts` and `n_genes_detected` per cell,
   grouped by `timepoint x celltype`. These two per-cell metrics are computed
   from `raw/X` (raw UMI counts), streamed in 20k-cell chunks so the full
   multi-GB sparse arrays are never loaded at once.
-- **`plot_celltype_pool_bars.png`** — bar charts of n_cells by celltype and
+- **`plots/plot_celltype_pool_bars.png`** — bar charts of n_cells by celltype and
   by pool, grouped by timepoint.
-- **`plot_umap_by_celltype.png`** — per-timepoint UMAP scatter (using each
+- **`plots/plot_umap_by_celltype.png`** — per-timepoint UMAP scatter (using each
   file's precomputed `obsm/X_umap`), colored by celltype. Downsampled to at
   most 50,000 cells per timepoint for plot legibility/speed.
-- **`plot_qc_distributions.png`** — histograms of `total_counts` (log10) and
+- **`plots/plot_qc_distributions.png`** — histograms of `total_counts` (log10) and
   `n_genes_detected` per cell, overlaid by timepoint.
 
 ## From `003_qualifying_cell_lines.py`
 
-- **`qualifying_cell_line_pool_min10_per_timepoint.csv`** — every
+- **`cohort/qualifying_cell_line_pool_min10_per_timepoint.csv`** — every
   `(cell_line, pool)` combination with >= 10 cells in that *same* pool at
   all three timepoints (D11, D30, D52). 159 combos, spanning 138 distinct
   cell lines (some lines qualify through more than one pool).
@@ -89,7 +110,7 @@ below).
 
 Sanity check for a candidate feature (predicting D52 differentiation
 efficiency from D11 state). **Each data point is a cell_line**, restricted
-to the 138 lines in `qualifying_cell_line_pool_min10_per_timepoint.csv`
+to the 138 lines in `cohort/qualifying_cell_line_pool_min10_per_timepoint.csv`
 (the paper-matching set). A line qualifying through more than one pool has
 its D11 cell type proportion **averaged across those pools** (the authors'
 approach — 21 of the 138 lines average across 2+ pools):
@@ -112,10 +133,10 @@ cell type's proportion observed *across cell lines* bigger than the
 sampling variance expected *within* each line, or is the apparent spread
 just counting noise?
 
-- **`d11_celltype_proportions_with_se.csv`** — per-line `n_pools`,
+- **`proportions/d11_celltype_proportions_with_se.csv`** — per-line `n_pools`,
   `phat`/`se` (the `p_i`/`SE_i` above) for each D11 celltype (FPP, P_FPP,
   NB).
-- **`d11_celltype_proportion_variance_vs_se.csv`** — per-celltype summary:
+- **`proportions/d11_celltype_proportion_variance_vs_se.csv`** — per-celltype summary:
   `observed_std` (std of `p_i` across lines, i.e. `sqrt(Var(p_1, p_2,
   ...))`) vs. `rms_se` (`sqrt(mean(SE_i^2))` — the sampling-noise SD on the
   same scale; not the plain mean of `SE_i`), plus `variance_ratio` =
@@ -123,7 +144,7 @@ just counting noise?
   4-8x `rms_se` (variance_ratio 14-58x) — real line-to-line signal clearly
   dominates counting noise, so D11 cell type proportions look like a
   reasonable feature to use.
-- **`plot_d11_celltype_proportion_vs_se.png`** — per celltype, `phat` per
+- **`plots/plot_d11_celltype_proportion_vs_se.png`** — per celltype, `phat` per
   cell line (sorted, with `se` error bars) vs. a dashed line at the mean;
   visually, the spread across lines is far wider than any individual
   error bar.
@@ -140,7 +161,7 @@ zero mean/unit variance and clip at +/-10 -> PCA to 10 components -> every
 D11 cell gets `PC1..PC10` -> per cell line, mean PCs per `(cell_line,
 pool)` first, then mean of those pool-means (matching `004`'s averaging
 approach), restricted to the 138 lines in
-`qualifying_cell_line_pool_min10_per_timepoint.csv`.
+`cohort/qualifying_cell_line_pool_min10_per_timepoint.csv`.
 
 **Important caveat, found and corrected during this analysis:** `pool11`
 is a severe sequencing-depth batch outlier (~1,900 mean UMI/cell vs.
@@ -161,13 +182,13 @@ cluster. A residual, much smaller batch signature remains on PC8 (0.85%
 of variance) where `pool11` lines still show higher spread — worth
 keeping in mind if using the later PCs for modeling.
 
-- **`d11_hvg_genes.csv`** — the 2000 selected HVGs (gene symbol, index,
+- **`pca/d11_hvg_genes.csv`** — the 2000 selected HVGs (gene symbol, index,
   mean, variance — from non-`pool11` cells).
-- **`d11_pca_variance_explained.csv`** — explained variance ratio per PC.
-- **`d11_pca_coords_per_line.csv`** — the 138-line x `(PC1..PC10)` feature
+- **`pca/d11_pca_variance_explained.csv`** — explained variance ratio per PC.
+- **`pca/d11_pca_coords_per_line.csv`** — the 138-line x `(PC1..PC10)` feature
   table.
-- **`plot_d11_pca_scree.png`** — explained variance ratio per PC.
-- **`plot_d11_pca_scatter.png`** — PC1 vs PC2 of the 138 line-level means.
+- **`plots/plot_d11_pca_scree.png`** — explained variance ratio per PC.
+- **`plots/plot_d11_pca_scatter.png`** — PC1 vs PC2 of the 138 line-level means.
 
 ## From `006_d11_pca_variance_vs_se.py`
 
@@ -193,7 +214,7 @@ extremely reliable at face value (`variance_ratio` 24-2038x, `icc`
 excluding the 16 pool11-derived lines drops their `variance_ratio` by
 30-60x (2038 -> 32, 1047 -> 49; see `variance_ratio_excl_pool11` /
 `icc_excl_pool11` columns and the sharp, isolated jump for pool11 lines in
-`plot_d11_pca_variance_vs_se.png`'s PC8/PC9 panels). This is expected: a
+`plots/plot_d11_pca_variance_vs_se.png`'s PC8/PC9 panels). This is expected: a
 technical batch that shifts every one of its cells the same way is
 *reliably different* by this test, indistinguishable from real biology
 using variance-vs-noise alone. PC1/PC2 are more robust (24 -> 12, 663 ->
@@ -204,30 +225,30 @@ shouldn't be read at face value for PC8/PC9 specifically, and that this
 check only establishes reliability, not that a PC predicts D52 efficiency
 (a separate question for later cross-validated regression).
 
-- **`d11_pca_line_level_with_se.csv`** — per-line `n_pools` and, for each
+- **`pca/d11_pca_line_level_with_se.csv`** — per-line `n_pools` and, for each
   PC, `{PC}_mean`/`{PC}_se` (the `p_i`/`SE_i` above).
-- **`d11_pca_variance_vs_se.csv`** — per-PC summary: `observed_std`,
+- **`pca/d11_pca_variance_vs_se.csv`** — per-PC summary: `observed_std`,
   `rms_se`, `variance_ratio`, `icc`, plus `variance_ratio_excl_pool11` /
   `icc_excl_pool11`.
-- **`plot_d11_pca_variance_vs_se.png`** — one panel per PC, each line's
+- **`plots/plot_d11_pca_variance_vs_se.png`** — one panel per PC, each line's
   value sorted with an SE error bar.
 
 ## From `007_d11_cell_counts_per_line.py`
 
 How many D11 cells does each cell line have — with a per-pool breakdown
 for lines profiled in more than one pool? Uses
-`cell_line_donor_pool_timepoint_n_cells.csv` (from `001`), so covers
+`cohort/cell_line_donor_pool_timepoint_n_cells.csv` (from `001`), so covers
 every D11 cell line (177), not just the 138 qualifying ones. Also flags
 which lines are among those 138, for cross-reference — a line can have
 plenty of D11 cells and still not qualify, since qualifying also requires
 >= 10 cells in the *same pool* at D30 and D52.
 
-- **`d11_cell_counts_per_line.csv`** — per line: `donor`, `n_pools_D11`,
+- **`cohort/d11_cell_counts_per_line.csv`** — per line: `donor`, `n_pools_D11`,
   `pool_breakdown_D11` (e.g. `pool4:2125, pool5:8321`),
   `total_n_cells_D11`, `is_qualifying_138`. Sorted by
   `total_n_cells_D11` descending. 25 of the 177 lines span more than one
   pool at D11; totals range from 1 to 14,640 cells.
-- **`plot_d11_cell_counts_per_line.png`** — sorted bar chart, colored by
+- **`plots/plot_d11_cell_counts_per_line.png`** — sorted bar chart, colored by
   qualifying status.
 
 ## From `008_technical_covariate_associations.py`
@@ -265,14 +286,14 @@ worth accounting for (e.g. as a covariate, or checking whether it
 survives controlling for pool/depth) before treating FPP/P_FPP as clean
 predictors of D52 efficiency.
 
-- **`technical_covariate_correlations_pca_uncorrected.csv`** — 10 PCs x
+- **`technical/technical_covariate_correlations_pca_uncorrected.csv`** — 10 PCs x
   `{r, p}` per numeric covariate + `eta_sq_pool`.
-- **`technical_covariate_correlations_celltype_proportions.csv`** — same,
+- **`technical/technical_covariate_correlations_celltype_proportions.csv`** — same,
   for the 3 D11 celltypes.
-- **`plot_technical_covariate_correlations.png`** — correlation heatmaps
+- **`plots/plot_technical_covariate_correlations.png`** — correlation heatmaps
   (PCs and proportions vs. numeric covariates) and eta-squared-by-pool bar
   charts.
-- **`technical_covariate_analysis_plan.md`** — the design notes/plan
+- **`technical/technical_covariate_analysis_plan.md`** — the design notes/plan
   written before implementing this and `007`.
 
 ## From `009_d52_outcome_label.py`
@@ -297,9 +318,9 @@ at all) and a broad spread from there — plenty of variance for a
 downstream model to explain, and SE error bars are small relative to that
 spread by eye.
 
-- **`d52_diff_efficiency_label.csv`** — `cell_line`, `n_pools`,
+- **`cohort/d52_diff_efficiency_label.csv`** — `cell_line`, `n_pools`,
   `diff_efficiency`, `diff_efficiency_se`.
-- **`plot_d52_diff_efficiency.png`** — sorted per-line values with SE
+- **`plots/plot_d52_diff_efficiency.png`** — sorted per-line values with SE
   error bars, and a histogram of the distribution.
 
 ## From `010_d52_label_technical_covariates.py`
@@ -320,9 +341,9 @@ the pack, not off on its own. Pool medians do vary somewhat (0.25-0.68
 across pools) but the boxes overlap heavily, consistent with the modest
 eta-squared rather than a dominant batch effect.
 
-- **`technical_covariate_correlations_d52_label.csv`** — the association
+- **`technical/technical_covariate_correlations_d52_label.csv`** — the association
   numbers above.
-- **`plot_d52_label_technical_covariates.png`** — scatter of
+- **`plots/plot_d52_label_technical_covariates.png`** — scatter of
   `diff_efficiency` vs. mean D52 sequencing depth, and a boxplot by pool.
 
 ## Regenerating

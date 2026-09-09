@@ -29,8 +29,8 @@ import numpy as np
 import pandas as pd
 
 OUT_DIR = Path(__file__).parent / "metadata_eda"
-PER_CELL_PCA_CSV = OUT_DIR / "d11_pca_coords_per_cell_qualifying.csv"
-QUALIFYING_COMBOS_CSV = OUT_DIR / "qualifying_cell_line_pool_min10_per_timepoint.csv"
+PER_CELL_PCA_CSV = OUT_DIR / "pca/d11_pca_coords_per_cell_qualifying.csv"
+QUALIFYING_COMBOS_CSV = OUT_DIR / "cohort/qualifying_cell_line_pool_min10_per_timepoint.csv"
 N_PCS = 10
 PC_COLS = [f"PC{i}" for i in range(1, N_PCS + 1)]
 
@@ -135,7 +135,7 @@ def plot_pc_vs_se(line_level: pd.DataFrame) -> None:
         ax.set_xlabel("cell_line (pool-averaged), sorted by value")
 
     fig.tight_layout()
-    fig.savefig(OUT_DIR / "plot_d11_pca_variance_vs_se.png", dpi=150)
+    fig.savefig(OUT_DIR / "plots/plot_d11_pca_variance_vs_se.png", dpi=150)
     plt.close(fig)
 
 
@@ -151,13 +151,13 @@ def main() -> None:
     n_multi_pool = (line_level["n_pools"] > 1).sum()
     print(f"{n_lines} cell lines; {n_multi_pool} of them average across more than one pool.")
 
-    line_level.to_csv(OUT_DIR / "d11_pca_line_level_with_se.csv", index=False)
+    line_level.to_csv(OUT_DIR / "pca/d11_pca_line_level_with_se.csv", index=False)
 
     qualifying = pd.read_csv(QUALIFYING_COMBOS_CSV)
     pool11_lines = set(qualifying.loc[qualifying["pool"] == "pool11", "cell_line"])
 
     summary = summarize_by_pc(line_level, pool11_lines)
-    summary.to_csv(OUT_DIR / "d11_pca_variance_vs_se.csv", index=False)
+    summary.to_csv(OUT_DIR / "pca/d11_pca_variance_vs_se.csv", index=False)
 
     print("\nPer-PC: observed variation across cell lines vs. typical sampling noise at D11")
     print(summary.to_string(index=False))

@@ -66,7 +66,7 @@ from modeling.folds import (
 )
 
 OUT_DIR = Path(__file__).parent
-QUALIFYING_COMBOS_CSV = Path(__file__).parent.parent / "metadata_eda" / "qualifying_cell_line_pool_min10_per_timepoint.csv"
+QUALIFYING_COMBOS_CSV = Path(__file__).parent.parent / "metadata_eda" / "cohort/qualifying_cell_line_pool_min10_per_timepoint.csv"
 N_SPLITS = 5
 N_REPEATS = 10
 N_PCS = 10
@@ -103,7 +103,7 @@ def main(
         folds["loco"] = leave_one_line_out(lines)
         folds["lodo"] = leave_one_donor_out(lines)
 
-    persist_folds(folds, OUT_DIR / f"fold_assignments{out_suffix}.csv")
+    persist_folds(folds, OUT_DIR / f"fold_data/fold_assignments{out_suffix}.csv")
     total_folds = sum(len(fs) for fs in folds.values())
     print(f"{total_folds} folds to process ({', '.join(f'{k}={len(v)}' for k, v in folds.items())})")
 
@@ -114,7 +114,8 @@ def main(
     # Proportions: no per-fold refit needed (pre-existing labels, no fitting step).
     props = compute_proportion_features(meta_q)
 
-    out_path = OUT_DIR / f"fold_features_D11{out_suffix}.csv"
+    out_path = OUT_DIR / f"fold_data/fold_features_D11{out_suffix}.csv"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Each fold's rows are appended as soon as they are computed, so a crash
     # at fold 250 of 258 costs one fold rather than the whole multi-hour run.

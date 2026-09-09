@@ -63,9 +63,9 @@ from modeling.models import ModelSpec, models_for_task
 
 REPO_ROOT = Path(__file__).parent.parent
 OUT_DIR = Path(__file__).parent
-D11_PCA_CSV = REPO_ROOT / "metadata_eda" / "d11_pca_coords_per_line.csv"
-D11_PROPORTIONS_CSV = REPO_ROOT / "metadata_eda" / "d11_celltype_proportions_with_se.csv"
-QUALIFYING_COMBOS_CSV = REPO_ROOT / "metadata_eda" / "qualifying_cell_line_pool_min10_per_timepoint.csv"
+D11_PCA_CSV = REPO_ROOT / "metadata_eda" / "pca/d11_pca_coords_per_line.csv"
+D11_PROPORTIONS_CSV = REPO_ROOT / "metadata_eda" / "proportions/d11_celltype_proportions_with_se.csv"
+QUALIFYING_COMBOS_CSV = REPO_ROOT / "metadata_eda" / "cohort/qualifying_cell_line_pool_min10_per_timepoint.csv"
 
 # Imported from harness rather than redefined here: these two modules must
 # agree on what enters a fit, and when each defined its own copy they
@@ -540,7 +540,8 @@ def run_for_model(
         )
 
     table = pd.DataFrame(rows)
-    out_csv = OUT_DIR / f"feature_importance_table_{task}_{model_name}{out_suffix}.csv"
+    out_csv = OUT_DIR / f"results/feature_importance_table_{task}_{model_name}{out_suffix}.csv"
+    out_csv.parent.mkdir(parents=True, exist_ok=True)
     table.to_csv(out_csv, index=False)
     print(table.to_string(index=False))
     print(f"Saved {out_csv}\n")
@@ -548,7 +549,7 @@ def run_for_model(
 
 
 def main(
-    fold_features_csv: Path = OUT_DIR / "fold_features_D11_full.csv",
+    fold_features_csv: Path = OUT_DIR / "fold_data/fold_features_D11_full.csv",
     out_suffix: str = "",
     pca_csv: Path | None = None,
 ) -> None:
@@ -568,7 +569,7 @@ def main(
     whose full-fit columns describe one PCA basis and whose fold-level
     columns describe another."""
     if pca_csv is None and out_suffix:
-        pca_csv = D11_PCA_CSV.with_name(f"d11_pca_coords_per_line{out_suffix}.csv")
+        pca_csv = D11_PCA_CSV.with_name(f"pca/d11_pca_coords_per_line{out_suffix}.csv")
         if not pca_csv.exists():
             raise SystemExit(
                 f"missing {pca_csv}\n"
@@ -582,13 +583,13 @@ def main(
 
     for model_name in ("lasso", "ridge"):
         run_for_model(
-            fold_features_csv, OUT_DIR / f"results_regression{out_suffix}.csv", model_name, "regression",
+            fold_features_csv, OUT_DIR / f"results/results_regression{out_suffix}.csv", model_name, "regression",
             "donor_grouped", "mae_mean", True, out_suffix=out_suffix, pca_csv=pca_csv,
         )
     for model_name in ("logistic_l1", "logistic_l2"):
         run_for_model(
             fold_features_csv,
-            OUT_DIR / f"results_classification{out_suffix}.csv",
+            OUT_DIR / f"results/results_classification{out_suffix}.csv",
             model_name,
             "classification",
             "donor_grouped",
@@ -606,6 +607,6 @@ if __name__ == "__main__":
     parser.add_argument("--suffix", default="", help="run against fold_features_D11{suffix}.csv and suffix all outputs")
     args = parser.parse_args()
     if args.suffix:
-        main(OUT_DIR / f"fold_features_D11{args.suffix}.csv", out_suffix=args.suffix)
+        main(OUT_DIR / f"fold_data/fold_features_D11{args.suffix}.csv", out_suffix=args.suffix)
     else:
         main()

@@ -34,8 +34,8 @@ import pandas as pd
 from sklearn.model_selection import RepeatedStratifiedKFold, StratifiedGroupKFold
 
 REPO_ROOT = Path(__file__).parent.parent
-QUALIFYING_COMBOS_CSV = REPO_ROOT / "metadata_eda" / "qualifying_cell_line_pool_min10_per_timepoint.csv"
-LABEL_CSV = REPO_ROOT / "metadata_eda" / "d52_diff_efficiency_label.csv"
+QUALIFYING_COMBOS_CSV = REPO_ROOT / "metadata_eda" / "cohort/qualifying_cell_line_pool_min10_per_timepoint.csv"
+LABEL_CSV = REPO_ROOT / "metadata_eda" / "cohort/d52_diff_efficiency_label.csv"
 SUCCESS_THRESHOLD = 0.2
 
 

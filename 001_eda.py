@@ -73,7 +73,7 @@ def main() -> None:
     OUT_DIR.mkdir(exist_ok=True)
 
     table = make_table(obs, ["donor", "cell_line", "timepoint", "pool"])
-    out_path = OUT_DIR / "cell_line_donor_pool_timepoint_n_cells.csv"
+    out_path = OUT_DIR / "cohort/cell_line_donor_pool_timepoint_n_cells.csv"
     table.to_csv(out_path, index=False)
     print(table)
     print(f"\nSaved {len(table)} rows to {out_path}")
@@ -82,7 +82,7 @@ def main() -> None:
         obs, ["donor", "cell_line", "timepoint", "pool", "celltype"]
     )
     celltype_out_path = (
-        OUT_DIR / "cell_line_donor_pool_timepoint_celltype_n_cells.csv"
+        OUT_DIR / "cohort/cell_line_donor_pool_timepoint_celltype_n_cells.csv"
     )
     celltype_table.to_csv(celltype_out_path, index=False)
     print(celltype_table)

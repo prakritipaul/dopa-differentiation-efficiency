@@ -13,7 +13,8 @@ OUT_DIR = Path(__file__).parent
 
 def main() -> None:
     results = run_all(task="classification")
-    out_path = OUT_DIR / "results_classification.csv"
+    out_path = OUT_DIR / "results/results_classification.csv"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     results.to_csv(out_path, index=False)
 
     cols = [

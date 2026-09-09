@@ -42,7 +42,7 @@ import pandas as pd
 DAY11_FILE = "/Users/prakritipaul/Documents/2021_jerber/day11.h5"
 DONOR_RE = re.compile(r"^(HPSI\d+i)-")
 OUT_DIR = Path(__file__).parent / "metadata_eda"
-QUALIFYING_COMBOS_CSV = OUT_DIR / "qualifying_cell_line_pool_min10_per_timepoint.csv"
+QUALIFYING_COMBOS_CSV = OUT_DIR / "cohort/qualifying_cell_line_pool_min10_per_timepoint.csv"
 
 
 def read_obs_categorical(f: h5py.File, column: str) -> pd.Categorical:
@@ -151,7 +151,7 @@ def plot_proportion_vs_se(proportions: pd.DataFrame) -> None:
         ax.set_xlabel("cell_line (pool-averaged), sorted by proportion")
 
     fig.tight_layout()
-    fig.savefig(OUT_DIR / "plot_d11_celltype_proportion_vs_se.png", dpi=150)
+    fig.savefig(OUT_DIR / "plots/plot_d11_celltype_proportion_vs_se.png", dpi=150)
     plt.close(fig)
 
 
@@ -172,10 +172,10 @@ def main() -> None:
         f"{n_multi_pool} of them average across more than one pool."
     )
 
-    proportions.to_csv(OUT_DIR / "d11_celltype_proportions_with_se.csv", index=False)
+    proportions.to_csv(OUT_DIR / "proportions/d11_celltype_proportions_with_se.csv", index=False)
 
     summary = summarize_by_celltype(proportions)
-    summary.to_csv(OUT_DIR / "d11_celltype_proportion_variance_vs_se.csv")
+    summary.to_csv(OUT_DIR / "proportions/d11_celltype_proportion_variance_vs_se.csv")
 
     print("\nPer-celltype: observed variation across cell lines vs. typical sampling noise at D11")
     print(summary)

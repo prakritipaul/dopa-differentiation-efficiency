@@ -101,10 +101,13 @@ def test_run_all_does_not_write_into_the_package_directory(patched_run_all, tmp_
     contained.
     """
     package_dir = Path(run_experiment.__file__).parent
-    before = {p.name: p.stat().st_mtime_ns for p in package_dir.glob("nested_selections_*.csv")}
+    committed = lambda: {p.name: p.stat().st_mtime_ns for p in package_dir.glob("results/nested_selections_*.csv")}
+    before = committed()
+    assert before, "guard is vacuous if no committed selections files exist to protect"
 
     run_experiment.run_all("regression", patched_run_all)
 
-    after = {p.name: p.stat().st_mtime_ns for p in package_dir.glob("nested_selections_*.csv")}
+    after = committed()
     assert after == before, f"run_all touched committed files in {package_dir}: {set(after) ^ set(before) or 'mtime changed'}"
-    assert (tmp_path / "nested_selections_regression.csv").exists(), "selections should be written to the injected dir"
+    assert (tmp_path / "results" / "nested_selections_regression.csv").exists(), \
+        "selections should be written under the injected dir"

@@ -86,7 +86,7 @@ def main() -> None:
     result = result.sort_values(["cell_line", "pool"]).reset_index(drop=True)
 
     OUT_DIR.mkdir(exist_ok=True)
-    out_path = OUT_DIR / "qualifying_cell_line_pool_min10_per_timepoint.csv"
+    out_path = OUT_DIR / "cohort/qualifying_cell_line_pool_min10_per_timepoint.csv"
     result.to_csv(out_path, index=False)
 
     n_distinct_lines = result["cell_line"].nunique()

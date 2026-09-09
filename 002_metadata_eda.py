@@ -163,14 +163,14 @@ def check_var_consistency() -> None:
 
 def save_crosstabs(obs: pd.DataFrame) -> None:
     treatment_x_timepoint = make_table(obs, ["timepoint", "treatment"])
-    treatment_x_timepoint.to_csv(OUT_DIR / "metadata_crosstab_treatment.csv", index=False)
+    treatment_x_timepoint.to_csv(OUT_DIR / "qc/metadata_crosstab_treatment.csv", index=False)
 
     celltype_x_timepoint = make_table(obs, ["timepoint", "celltype"])
-    celltype_x_timepoint.to_csv(OUT_DIR / "metadata_crosstab_celltype.csv", index=False)
+    celltype_x_timepoint.to_csv(OUT_DIR / "qc/metadata_crosstab_celltype.csv", index=False)
 
     celltype_x_cluster = make_table(obs, ["timepoint", "cluster_id", "celltype"])
     celltype_x_cluster.to_csv(
-        OUT_DIR / "metadata_crosstab_celltype_by_cluster.csv", index=False
+        OUT_DIR / "qc/metadata_crosstab_celltype_by_cluster.csv", index=False
     )
 
     print("\nSaved crosstab CSVs: treatment, celltype, celltype_by_cluster")
@@ -183,7 +183,7 @@ def save_qc_summary(obs: pd.DataFrame) -> pd.DataFrame:
         ]
         .describe()
     )
-    qc_summary.to_csv(OUT_DIR / "qc_summary_by_timepoint_celltype.csv")
+    qc_summary.to_csv(OUT_DIR / "qc/qc_summary_by_timepoint_celltype.csv")
     print("\n--- QC summary (total_counts, n_genes_detected) by timepoint x celltype ---")
     print(qc_summary)
     return qc_summary
@@ -204,7 +204,7 @@ def plot_celltype_and_pool_bars(obs: pd.DataFrame) -> None:
     axes[1].tick_params(axis="x", labelsize=7)
 
     fig.tight_layout()
-    fig.savefig(OUT_DIR / "plot_celltype_pool_bars.png", dpi=150)
+    fig.savefig(OUT_DIR / "plots/plot_celltype_pool_bars.png", dpi=150)
     plt.close(fig)
 
 
@@ -225,7 +225,7 @@ def plot_umap_by_celltype(obs: pd.DataFrame) -> None:
         ax.legend(markerscale=5, fontsize=7, loc="best")
 
     fig.tight_layout()
-    fig.savefig(OUT_DIR / "plot_umap_by_celltype.png", dpi=150)
+    fig.savefig(OUT_DIR / "plots/plot_umap_by_celltype.png", dpi=150)
     plt.close(fig)
 
 
@@ -245,7 +245,7 @@ def plot_qc_distributions(obs: pd.DataFrame) -> None:
     axes[1].legend()
 
     fig.tight_layout()
-    fig.savefig(OUT_DIR / "plot_qc_distributions.png", dpi=150)
+    fig.savefig(OUT_DIR / "plots/plot_qc_distributions.png", dpi=150)
     plt.close(fig)
 
 

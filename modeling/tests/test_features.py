@@ -27,7 +27,7 @@ REPO_ROOT = Path(__file__).parent.parent.parent
 
 def test_compute_proportion_features_matches_known_values():
     meta = load_cell_metadata("D11")
-    qualifying = pd.read_csv(REPO_ROOT / "metadata_eda" / "qualifying_cell_line_pool_min10_per_timepoint.csv")[
+    qualifying = pd.read_csv(REPO_ROOT / "metadata_eda" / "cohort/qualifying_cell_line_pool_min10_per_timepoint.csv")[
         ["cell_line", "pool"]
     ]
     meta_q = meta.merge(qualifying, on=["cell_line", "pool"], how="inner")
@@ -49,12 +49,12 @@ def test_integration_small_extraction():
 
     out_suffix = "_agent_check"
     out_dir = REPO_ROOT / "modeling"
-    features_csv = out_dir / f"fold_features_D11{out_suffix}.csv"
+    features_csv = out_dir / f"fold_data/fold_features_D11{out_suffix}.csv"
     # Must match run_feature_extraction's actual output name. This previously
     # read "fold_assignments_first_pass{suffix}" -- the name used when this
     # test was written -- so cleanup silently missed the real file after the
     # writer was renamed.
-    fold_assignments_csv = out_dir / f"fold_assignments{out_suffix}.csv"
+    fold_assignments_csv = out_dir / f"fold_data/fold_assignments{out_suffix}.csv"
 
     try:
         # include_loco_lodo=False is required for the row count below to mean
@@ -82,7 +82,7 @@ def test_integration_small_extraction():
         # Independent re-derivation of the donor-grouping constraint directly
         # from the persisted output (not reusing folds.py's own Fold objects).
         qualifying = pd.read_csv(
-            REPO_ROOT / "metadata_eda" / "qualifying_cell_line_pool_min10_per_timepoint.csv"
+            REPO_ROOT / "metadata_eda" / "cohort/qualifying_cell_line_pool_min10_per_timepoint.csv"
         )[["cell_line", "donor"]].drop_duplicates()
         dg = df[df["scheme"] == "donor_grouped"].merge(qualifying, on="cell_line", how="left")
         assert dg["donor"].isna().sum() == 0, "cell_line -> donor mapping failed for some rows"

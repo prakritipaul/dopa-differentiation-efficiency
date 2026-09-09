@@ -12,7 +12,8 @@ OUT_DIR = Path(__file__).parent
 
 def main() -> None:
     results = run_all(task="regression")
-    out_path = OUT_DIR / "results_regression.csv"
+    out_path = OUT_DIR / "results/results_regression.csv"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     results.to_csv(out_path, index=False)
 
     cols = ["model", "mae_mean", "mae_std", "rmse_mean", "rmse_std", "r2_mean", "r2_std"]
