@@ -456,6 +456,9 @@ reused as D30 features.
 
 ## What PC1 is: a D11 proliferation axis
 
+> Full write-up, loadings tables and literature sources:
+> **`metadata_eda/PCA_interpretation.md`**. Summary below.
+
 `005_d11_pca_features.py` now also writes
 `metadata_eda/d11_pca_gene_loadings{suffix}.csv` -- all 10 PCs x 2000 HVGs,
 long format, sorted by |loading| within each PC.
