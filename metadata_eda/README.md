@@ -1,5 +1,8 @@
 # metadata_eda
 
+> **Project-level findings summary with literature context: [`FINDINGS.md`](../FINDINGS.md)**
+
+
 Outputs from the EDA scripts (`001_eda.py`, `002_metadata_eda.py`,
 `003_qualifying_cell_lines.py`, in the repo root) run against the Jerber et
 al. dopaminergic neuron differentiation dataset

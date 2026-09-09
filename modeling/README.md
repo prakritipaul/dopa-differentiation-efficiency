@@ -1,5 +1,8 @@
 # D11 -> D52 modeling: CV/modeling plan
 
+> **Project-level findings summary with literature context: [`FINDINGS.md`](../FINDINGS.md)**
+
+
 Predicting D52 differentiation efficiency from D11 features (138 cell
 lines, from `metadata_eda/cohort/qualifying_cell_line_pool_min10_per_timepoint.csv`
 and `metadata_eda/cohort/d52_diff_efficiency_label.csv`). Designed to generalize
