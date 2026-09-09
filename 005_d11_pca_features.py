@@ -165,7 +165,8 @@ def run_pca(
     hvg_idx: np.ndarray,
     fit_mask: np.ndarray,
     n_components: int = N_PCS,
-) -> tuple[np.ndarray, np.ndarray]:
+    return_model: bool = False,
+):
     """Fit PCA (and the scaling it uses) on cells where fit_mask is True
     only, then transform every cell (fit_mask True or False) into that
     space -- so excluded (pool11) cells still get PC coordinates, without
@@ -180,6 +181,10 @@ def run_pca(
     pca = PCA(n_components=n_components, svd_solver="randomized", random_state=0)
     pca.fit(X_scaled[fit_mask])
     pcs = pca.transform(X_scaled)
+    # Default stays a 2-tuple: modeling/features.py unpacks exactly two
+    # values, so returning the model is opt-in.
+    if return_model:
+        return pcs, pca.explained_variance_ratio_, pca
     return pcs, pca.explained_variance_ratio_
 
 
@@ -271,7 +276,33 @@ def main(restrict_fit_to_qualifying: bool = False, out_suffix: str = "") -> None
     X_hvg = extract_hvg_matrix(DAY11_FILE, hvg_idx)
 
     print(f"Running PCA (n_components={N_PCS}, fit on non-pool11 cells, transform all)...")
-    pcs, explained_variance_ratio = run_pca(X_hvg, mean, var, hvg_idx, fit_mask, n_components=N_PCS)
+    pcs, explained_variance_ratio, pca_model = run_pca(
+        X_hvg, mean, var, hvg_idx, fit_mask, n_components=N_PCS, return_model=True
+    )
+
+    # Gene loadings: pca.components_ is (n_components, n_HVGs) in the space
+    # the PCA was fit on -- STANDARDIZED expression, so a loading is the
+    # weight per 1 SD of that gene, comparable across genes of different
+    # absolute expression. Saved long-format for all 10 PCs.
+    #
+    # Sign is arbitrary: PCA fixes an axis, not a direction, so only the
+    # loading's sign RELATIVE to other genes on the same PC is meaningful,
+    # and the direction can flip between bases or reruns of a different fit.
+    loadings = pd.DataFrame(
+        pca_model.components_.T,
+        columns=[f"PC{i}" for i in range(1, N_PCS + 1)],
+    )
+    loadings.insert(0, "gene", gene_symbols[hvg_idx])
+    loadings.insert(1, "gene_index", hvg_idx)
+    loadings_long = loadings.melt(
+        id_vars=["gene", "gene_index"], var_name="PC", value_name="loading"
+    )
+    loadings_long["abs_loading"] = loadings_long["loading"].abs()
+    loadings_long = loadings_long.sort_values(
+        ["PC", "abs_loading"], ascending=[True, False]
+    ).reset_index(drop=True)
+    loadings_long.to_csv(OUT_DIR / f"d11_pca_gene_loadings{out_suffix}.csv", index=False)
+    print(f"Saved gene loadings for {N_PCS} PCs x {len(hvg_idx)} HVGs.")
 
     pc_cols = [f"PC{i}" for i in range(1, N_PCS + 1)]
     variance_table = pd.DataFrame({"PC": pc_cols, "explained_variance_ratio": explained_variance_ratio})

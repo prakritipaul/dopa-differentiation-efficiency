@@ -454,6 +454,48 @@ combos has identical D11 and D30 counts (D11 range 25-14,640; D30 range
 substantially, which is a further reason D11 proportions must never be
 reused as D30 features.
 
+## What PC1 is: a D11 proliferation axis
+
+`005_d11_pca_features.py` now also writes
+`metadata_eda/d11_pca_gene_loadings{suffix}.csv` -- all 10 PCs x 2000 HVGs,
+long format, sorted by |loading| within each PC.
+
+PC1 (5.4% of HVG variance, Spearman rho = **+0.563** vs D52 efficiency, so
+higher PC1 = higher efficiency) is a **cell-cycle / proliferation axis**:
+
+| positive loadings (high in high-efficiency lines) | negative loadings |
+|---|---|
+| HMGB2, PTTG1, NUSAP1, UBE2C, CENPF, CKS2, TOP2A, PLK1, CCNB1/CCNB2, KPNA2, CDC20, BIRC5, CKS1B, AURKA/AURKB, CCNA2, TPX2, CDK1, KIF2C, SMC4, CDKN3, MKI67 | RPL12, RPL10, RPS3, RPS12, RPS28, RPL37A (ribosomal proteins); EIF3E, EIF3L, EIF4A2 (translation initiation); GAPDH, COX7C, UQCRB, TOMM7, ETFB (housekeeping/OXPHOS); SNHG8, MIAT, EPB41L4A-AS1, APOE, CCND2, SLC2A1 |
+
+The positive side is a textbook G2/M signature. So lines whose D11
+cultures are **more proliferative differentiate better by D52**. This is
+consistent with the line-level correlations: PC1 tracks `phat_P_FPP`
+(proliferating FPP) at rho = **+0.798** and is negatively correlated with
+`phat_NB` (rho = -0.552), the neuroblast fraction that independently
+predicts *worse* outcome.
+
+Top 25 genes carry 29.6% of PC1's total weight (loadings are unit-norm);
+median |loading| is 0.0012, so PC1 is dominated by a compact, coherent
+gene set rather than being diffuse.
+
+**Replicates across bases**: PC1 loadings correlate r = **+0.9995**
+between the baseline and qualifying-only bases, with 25/25 top-gene
+overlap. Unlike PC2/PC3, PC1 is stable and safe to compare across the two.
+
+Caveats:
+- **Loading sign is arbitrary in general.** It is interpretable here only
+  because PC1 was oriented against the outcome (rho > 0). Do not carry the
+  sign convention to other PCs without re-checking.
+- Loadings are weights on **standardized** expression (per 1 SD of that
+  gene, after the +/-`SCALE_CLIP` clip), so they are comparable across
+  genes of different absolute expression -- but they are not fold-changes.
+- **PC1 is moderately pool-associated (eta2 = 0.49).** A
+  proliferation-vs-ribosomal/housekeeping contrast is also the classic
+  shape of a library-size / cell-quality technical axis, so some of this
+  variance is likely technical. The biological reading is plausible and
+  matches the `phat_P_FPP` correlation, but PC1 is not as technically
+  clean as `phat_NB` (eta2 = 0.04).
+
 ## Pool-correction dropped
 
 Investigated (with an independent Codex review) why pool-correction cut
