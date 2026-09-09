@@ -74,7 +74,7 @@ def summarize_nested_selections(nested_preds: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def run_all(task: str, fold_features_csv: Path = FOLD_FEATURES_CSV) -> pd.DataFrame:
+def run_all(task: str, fold_features_csv: Path = FOLD_FEATURES_CSV, out_suffix: str = "") -> pd.DataFrame:
     fold_features = pd.read_csv(fold_features_csv)
     lines = load_lines_with_label()
 
@@ -113,7 +113,12 @@ def run_all(task: str, fold_features_csv: Path = FOLD_FEATURES_CSV) -> pd.DataFr
     if all_selections:
         selections = pd.concat(all_selections, ignore_index=True)
         cols = ["scheme", "pool_correction", "model", "repeat", "fold", "selected_k", "selected_param"]
-        selections[cols].drop_duplicates().to_csv(OUT_DIR / f"nested_selections_{task}.csv", index=False)
+        # Suffixed HERE rather than written unsuffixed and renamed afterwards:
+        # the rename approach overwrote the committed baseline file before
+        # moving it aside, which deleted the baseline selections from the repo.
+        selections[cols].drop_duplicates().to_csv(
+            OUT_DIR / f"nested_selections_{task}{out_suffix}.csv", index=False
+        )
 
     return pd.concat(summaries, ignore_index=True)
 

@@ -89,13 +89,22 @@ m008 = _load_module("008_technical_covariate_associations")
 # ---------------------------------------------------------------------------
 
 
-def load_full_fit_features() -> pd.DataFrame:
+def load_full_fit_features(pca_csv: Path | None = None) -> pd.DataFrame:
     """Line-level D11 features (3 proportions + PC1..PC10) fit on ALL
     qualifying lines (no held-out split) -- reuses 005's global
-    (non-pool11) PCA fit and 004's proportions directly."""
+    (non-pool11) PCA fit and 004's proportions directly.
+
+    pca_csv selects WHICH global PCA basis to read. It must match the
+    basis the fold-level results were computed on, or a single importance
+    table mixes two bases: the full-fit columns (coefficient, SHAP,
+    univariate, technical covariate) would come from one and the
+    fold-level columns (LOCO, permutation, selection frequency) from the
+    other. That exact bug shipped once -- the _qualonly tables carried
+    baseline univariate values -- so the caller now passes this
+    explicitly."""
     qualifying_lines = pd.read_csv(QUALIFYING_COMBOS_CSV)["cell_line"].unique()
 
-    pcs = pd.read_csv(D11_PCA_CSV)
+    pcs = pd.read_csv(pca_csv or D11_PCA_CSV)
     pcs = pcs[pcs["cell_line"].isin(qualifying_lines)]
 
     props_long = pd.read_csv(D11_PROPORTIONS_CSV)
@@ -204,8 +213,10 @@ def _fit_coefficients(
     return pd.Series(coef, index=feature_names)
 
 
-def fit_full_model_coefficients(model_spec: ModelSpec, task: str, k: int, params: dict) -> pd.Series:
-    features = load_full_fit_features()
+def fit_full_model_coefficients(
+    model_spec: ModelSpec, task: str, k: int, params: dict, pca_csv: Path | None = None
+) -> pd.Series:
+    features = load_full_fit_features(pca_csv)
     lines = load_lines_with_label()
     features = features.merge(lines[["cell_line", "diff_efficiency", "success"]], on="cell_line")
 
@@ -257,8 +268,8 @@ def summarize_coefficients(fold_coefs: pd.DataFrame, full_fit_coefs: pd.Series, 
 # ---------------------------------------------------------------------------
 
 
-def univariate_association(task: str) -> pd.Series:
-    features = load_full_fit_features()
+def univariate_association(task: str, pca_csv: Path | None = None) -> pd.Series:
+    features = load_full_fit_features(pca_csv)
     lines = load_lines_with_label()
     df = features.merge(lines[["cell_line", "diff_efficiency", "success"]], on="cell_line")
     y = df["diff_efficiency" if task == "regression" else "success"]
@@ -409,7 +420,9 @@ def paired_permutation_deltas(
 # ---------------------------------------------------------------------------
 
 
-def compute_shap_like(full_fit_coefs: pd.Series, feature_names: list[str]) -> pd.Series:
+def compute_shap_like(
+    full_fit_coefs: pd.Series, feature_names: list[str], pca_csv: Path | None = None
+) -> pd.Series:
     """mean |coef_j * z_ij| where z is the STANDARDIZED feature value.
 
     The coefficients being reported come from a model fit on
@@ -432,9 +445,9 @@ def compute_shap_like(full_fit_coefs: pd.Series, feature_names: list[str]) -> pd
 # ---------------------------------------------------------------------------
 
 
-def technical_covariate_association() -> pd.Series:
+def technical_covariate_association(pca_csv: Path | None = None) -> pd.Series:
     qualifying = pd.read_csv(QUALIFYING_COMBOS_CSV)[["cell_line", "pool"]]
-    features = load_full_fit_features()
+    features = load_full_fit_features(pca_csv)
     df = features.merge(qualifying, on="cell_line", how="inner")
 
     eta_sq = {}
@@ -458,25 +471,25 @@ def bucket_eta_sq(x: float) -> str:
 
 def run_for_model(
     fold_features_csv: Path, results_csv: Path, model_name: str, task: str, scheme: str, metric: str, minimize: bool,
-    out_suffix: str = "",
+    out_suffix: str = "", pca_csv: Path | None = None,
 ) -> pd.DataFrame:
     model_spec = next(m for m in models_for_task(task) if m.name == model_name)
     k, params = select_winning_config_one_se(results_csv, model_name, scheme, metric, minimize)
     print(f"{model_name}: winning config (one-SE rule) k={k}, params={params}")
 
     feature_names = _model_feature_names(k)
-    full_fit_coefs = fit_full_model_coefficients(model_spec, task, k, params)
+    full_fit_coefs = fit_full_model_coefficients(model_spec, task, k, params, pca_csv)
     lines = load_lines_with_label()
 
     fold_features = pd.read_csv(fold_features_csv)
     fold_coefs = fold_coefficient_stability(fold_features, lines, scheme, task, model_spec, k, params)
     coef_summary = summarize_coefficients(fold_coefs, full_fit_coefs, feature_names)
 
-    univariate = univariate_association(task)
+    univariate = univariate_association(task, pca_csv)
     loco = paired_loco_deltas(fold_features, lines, scheme, task, model_spec, k, params)
     perm = paired_permutation_deltas(fold_features, lines, scheme, task, model_spec, k, params)
-    shap_like = compute_shap_like(full_fit_coefs, feature_names)
-    tech_cov = technical_covariate_association()
+    shap_like = compute_shap_like(full_fit_coefs, feature_names, pca_csv)
+    tech_cov = technical_covariate_association(pca_csv)
 
     all_features = ALL_PROPORTION_COLS + [f"PC{i}" for i in range(1, k + 1)]
     rows = []
@@ -515,7 +528,11 @@ def run_for_model(
     return table
 
 
-def main(fold_features_csv: Path = OUT_DIR / "fold_features_D11_full.csv", out_suffix: str = "") -> None:
+def main(
+    fold_features_csv: Path = OUT_DIR / "fold_features_D11_full.csv",
+    out_suffix: str = "",
+    pca_csv: Path | None = None,
+) -> None:
     """All four models, not just the L1 pair.
 
     The L1 variants (lasso, logistic_l1) are the more informative ones
@@ -523,11 +540,31 @@ def main(fold_features_csv: Path = OUT_DIR / "fold_features_D11_full.csv", out_s
     `selection_frequency` are meaningful; ridge/L2 never zero anything.
     But ridge/logistic_l2 are the PRE-REGISTERED performance models, so
     both are reported to avoid any appearance of picking whichever model
-    told the nicer story."""
+    told the nicer story.
+
+    pca_csv: the global (full-fit) PCA basis backing the coefficient,
+    SHAP, univariate and technical-covariate columns. When out_suffix is
+    given and pca_csv is not, the matching suffixed basis is REQUIRED to
+    exist -- falling back to the default would silently produce a table
+    whose full-fit columns describe one PCA basis and whose fold-level
+    columns describe another."""
+    if pca_csv is None and out_suffix:
+        pca_csv = D11_PCA_CSV.with_name(f"d11_pca_coords_per_line{out_suffix}.csv")
+        if not pca_csv.exists():
+            raise SystemExit(
+                f"missing {pca_csv}\n"
+                f"The fold-level columns would come from {fold_features_csv.name} while the\n"
+                f"full-fit columns came from the default basis -- a mixed-basis table.\n"
+                f"Generate it first:\n"
+                f"  uv run python 005_d11_pca_features.py --restrict-to-qualifying --suffix {out_suffix}"
+            )
+    print(f"full-fit PCA basis: {(pca_csv or D11_PCA_CSV).name}")
+    print(f"fold-level features: {fold_features_csv.name}\n")
+
     for model_name in ("lasso", "ridge"):
         run_for_model(
             fold_features_csv, OUT_DIR / f"results_regression{out_suffix}.csv", model_name, "regression",
-            "donor_grouped", "mae_mean", True, out_suffix=out_suffix,
+            "donor_grouped", "mae_mean", True, out_suffix=out_suffix, pca_csv=pca_csv,
         )
     for model_name in ("logistic_l1", "logistic_l2"):
         run_for_model(
@@ -539,6 +576,7 @@ def main(fold_features_csv: Path = OUT_DIR / "fold_features_D11_full.csv", out_s
             "roc_auc_mean",
             False,
             out_suffix=out_suffix,
+            pca_csv=pca_csv,
         )
 
 

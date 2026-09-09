@@ -190,7 +190,7 @@ def collapse_to_line_level(pc_df: pd.DataFrame, pc_cols: list[str], qualifying: 
     return line_means.reset_index()
 
 
-def plot_scree(explained_variance_ratio: np.ndarray) -> None:
+def plot_scree(explained_variance_ratio: np.ndarray, out_suffix: str = "") -> None:
     fig, ax = plt.subplots(figsize=(6, 4))
     x = np.arange(1, len(explained_variance_ratio) + 1)
     ax.plot(x, explained_variance_ratio, marker="o")
@@ -199,31 +199,52 @@ def plot_scree(explained_variance_ratio: np.ndarray) -> None:
     ax.set_title("D11 PCA scree plot")
     ax.set_xticks(x)
     fig.tight_layout()
-    fig.savefig(OUT_DIR / "plot_d11_pca_scree.png", dpi=150)
+    fig.savefig(OUT_DIR / f"plot_d11_pca_scree{out_suffix}.png", dpi=150)
     plt.close(fig)
 
 
-def plot_scatter(line_level: pd.DataFrame) -> None:
+def plot_scatter(line_level: pd.DataFrame, out_suffix: str = "") -> None:
     fig, ax = plt.subplots(figsize=(6, 5))
     ax.scatter(line_level["PC1"], line_level["PC2"], s=15, alpha=0.7)
     ax.set_xlabel("PC1 (line-level mean)")
     ax.set_ylabel("PC2 (line-level mean)")
     ax.set_title("D11 PCA: per-cell-line PC1 vs PC2")
     fig.tight_layout()
-    fig.savefig(OUT_DIR / "plot_d11_pca_scatter.png", dpi=150)
+    fig.savefig(OUT_DIR / f"plot_d11_pca_scatter{out_suffix}.png", dpi=150)
     plt.close(fig)
 
 
-def main() -> None:
+def main(restrict_fit_to_qualifying: bool = False, out_suffix: str = "") -> None:
+    """restrict_fit_to_qualifying: when True the HVG/PCA fit additionally
+    excludes cells outside the qualifying (cell_line, pool) combos -- the
+    study population. Default False reproduces the original global fit,
+    which also uses cells from the 39 lines outside the 138.
+
+    This is the FULL-FIT (no held-out split) counterpart of
+    run_feature_extraction.py's per-fold restriction. Both must agree:
+    modeling/feature_importance.py mixes fold-level results (LOCO,
+    permutation) with full-fit results (coefficients, SHAP, univariate),
+    so if only one of the two is restricted, a single importance table
+    ends up describing two different PCA bases.
+
+    Pass a distinct out_suffix so the variant's outputs sit beside the
+    originals instead of overwriting them."""
     OUT_DIR.mkdir(exist_ok=True)
 
     line_pool = load_line_pool()
     fit_mask = (line_pool["pool"] != "pool11").to_numpy()
+    if restrict_fit_to_qualifying:
+        qual = pd.read_csv(QUALIFYING_COMBOS_CSV)[["cell_line", "pool"]]
+        in_combos = pd.MultiIndex.from_arrays(
+            [line_pool["cell_line"], line_pool["pool"]]
+        ).isin(pd.MultiIndex.from_frame(qual))
+        fit_mask = fit_mask & np.asarray(in_combos)
     print(
         f"Fitting HVGs/PCA on {fit_mask.sum()} of {len(fit_mask)} D11 cells "
         f"(excluding pool11 -- a severe sequencing-depth batch outlier: "
-        f"~1,900 mean UMI/cell vs ~10,000-18,000 in every other pool). "
-        f"pool11 cells are still projected into the resulting PCA space."
+        f"~1,900 mean UMI/cell vs ~10,000-18,000 in every other pool"
+        + (", and restricted to qualifying (cell_line, pool) combos" if restrict_fit_to_qualifying else "")
+        + f"). Excluded cells are still projected into the resulting PCA space."
     )
 
     print("Pass 1/2: computing per-gene mean/variance (fit cells only)...")
@@ -244,7 +265,7 @@ def main() -> None:
             "var": var[hvg_idx],
         }
     )
-    hvg_table.to_csv(OUT_DIR / "d11_hvg_genes.csv", index=False)
+    hvg_table.to_csv(OUT_DIR / f"d11_hvg_genes{out_suffix}.csv", index=False)
 
     print("Pass 2/2: extracting HVG-only expression matrix (all D11 cells)...")
     X_hvg = extract_hvg_matrix(DAY11_FILE, hvg_idx)
@@ -254,7 +275,7 @@ def main() -> None:
 
     pc_cols = [f"PC{i}" for i in range(1, N_PCS + 1)]
     variance_table = pd.DataFrame({"PC": pc_cols, "explained_variance_ratio": explained_variance_ratio})
-    variance_table.to_csv(OUT_DIR / "d11_pca_variance_explained.csv", index=False)
+    variance_table.to_csv(OUT_DIR / f"d11_pca_variance_explained{out_suffix}.csv", index=False)
     print(variance_table)
 
     pc_df = pd.concat([line_pool, pd.DataFrame(pcs, columns=pc_cols)], axis=1)
@@ -265,18 +286,25 @@ def main() -> None:
     # 006_d11_pca_variance_vs_se.py to check these features the same way
     # 004 checks cell type proportions (variance across lines vs. SE).
     pc_df_qualifying = pc_df.merge(qualifying, on=["cell_line", "pool"], how="inner")
-    pc_df_qualifying.to_csv(OUT_DIR / "d11_pca_coords_per_cell_qualifying.csv", index=False)
+    pc_df_qualifying.to_csv(OUT_DIR / f"d11_pca_coords_per_cell_qualifying{out_suffix}.csv", index=False)
 
     line_level = collapse_to_line_level(pc_df, pc_cols, qualifying)
-    line_level.to_csv(OUT_DIR / "d11_pca_coords_per_line.csv", index=False)
+    line_level.to_csv(OUT_DIR / f"d11_pca_coords_per_line{out_suffix}.csv", index=False)
 
     print(f"\n{line_level['cell_line'].nunique()} cell lines in the final PCA feature table.")
     print(line_level.head())
 
-    plot_scree(explained_variance_ratio)
-    plot_scatter(line_level)
+    plot_scree(explained_variance_ratio, out_suffix)
+    plot_scatter(line_level, out_suffix)
     print(f"\nSaved CSVs and plots to {OUT_DIR}")
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--restrict-to-qualifying", action="store_true",
+                        help="fit HVGs/PCA only on cells in qualifying (cell_line, pool) combos")
+    parser.add_argument("--suffix", default="", help="suffix for all output filenames")
+    args = parser.parse_args()
+    main(restrict_fit_to_qualifying=args.restrict_to_qualifying, out_suffix=args.suffix)

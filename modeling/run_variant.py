@@ -59,15 +59,9 @@ def main(suffix: str) -> None:
         raise SystemExit(f"missing {fold_features_csv} -- run the extraction with out_suffix={suffix!r} first")
 
     for task in ("regression", "classification"):
-        results = run_all(task, fold_features_csv)
+        results = run_all(task, fold_features_csv, out_suffix=suffix)
         out_path = OUT_DIR / f"results_{task}{suffix}.csv"
         results.to_csv(out_path, index=False)
-
-        # run_all writes nested_selections_{task}.csv unsuffixed; move it aside
-        # so the variant's selections don't clobber the baseline's.
-        sel = OUT_DIR / f"nested_selections_{task}.csv"
-        if suffix and sel.exists():
-            sel.rename(OUT_DIR / f"nested_selections_{task}{suffix}.csv")
 
         print(f"\n=== {task.upper()}: pre-registered headline "
               f"({HEADLINE['scheme']}, {HEADLINE['tuning']}, {HEADLINE_MODEL[task]}) ===")
