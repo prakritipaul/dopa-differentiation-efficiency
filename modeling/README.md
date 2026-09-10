@@ -147,6 +147,41 @@ by <0.005), so they look stable.
 > authoritative. The narrative and interpretation here still hold; only
 > read the specific figures from the bottom table.
 
+### What the columns mean
+
+`phat` is **p-hat**, statistics notation for an estimated proportion.
+`phat_NB` = fraction of that line's D11 cells labelled neuroblast, computed
+per `(cell_line, pool)` as `n_of_that_type / n_total`, then averaged
+pool-then-line. The three sum to exactly 1, which is why only two enter a fit
+and `phat_P_FPP` reads `reference`.
+
+| column | how it is computed | how to read it | example (`logistic_l1`, k=2) |
+|---|---|---|---|
+| **Univariate rho** | Spearman rank correlation of feature vs outcome over the 138 lines. No model, no folds, no other features. | -1..+1. Sign = direction, magnitude = monotonic association. Marginal, so blind to confounding. | `phat_NB` -0.733: more neuroblasts -> lower efficiency |
+| **Coef** | Standardized coefficient from ONE fit on all 138 lines at the winning config; features scaled to mean 0 / SD 1 first. | Change in outcome per **1 SD** of the feature; log-odds for classification. Standardization is what makes proportions (SD ~0.05) and PCs (SD ~1-9) comparable. | `phat_NB` -1.535: +1 SD of NB lowers log-odds of success by 1.53 |
+| **Sel. freq** | Fraction of CV folds where the coefficient came back non-zero. | 0..1 stability -- does it survive refitting on other subsets? **Only meaningful for L1**; ridge/L2 never zero anything, so their column is uniformly 1.00. | `phat_NB` 0.90 kept; `phat_FPP` 0.00 always dropped |
+| **LOCO delta** | **Refit** without that feature, same folds and config; paired per fold, `score_with - score_without`, then averaged. | Positive = removing it hurt = it helps. In headline-metric units. Because the model is refit, a real but **redundant** feature scores ~0. | `phat_NB` +0.051 AUC |
+| **Perm delta** | Take the **already-fitted** model, shuffle that column in the test matrix, re-score. Paired per fold. Proportions shuffled as a block. | Positive = this model relies on it. No refit, so it measures dependence, not irreplaceability. | `phat_FPP` 0.277 -- yet its LOCO is 0.0 |
+| **SHAP** | `mean abs(coef_j * z_ij)` over the 138 lines, `z` = standardized value. | Average magnitude of the feature's push on one prediction. | `phat_NB` 1.190 vs `PC2` 0.514 |
+| **Technical covariate** | eta^2 of the feature on pool identity: `(SS_total - SS_within)/SS_total`. | 0..1 = fraction of the feature's variance explained by **which pool** a line came from. Says nothing about the outcome -- it flags the feature. >=0.5 High, >=0.15 Moderate, else Low. | `phat_NB` 0.04 clean; `PC2` 0.76 mostly batch |
+
+Two honest caveats:
+
+- **SHAP is not a fifth independent measure here.** For a linear model on
+  standardized features `mean abs(z) ~ 0.8`, so SHAP ~ 0.8 x abs(coef)
+  (observed 0.78 and 0.79). It is a consistency check that respects the
+  feature's actual distribution, not corroborating evidence.
+- **Coefficient signs are multivariate and can flip.** In the regression
+  table `phat_NB` has rho = -0.73 but coefficient **+0.067** -- a suppression
+  effect, with PC2/PC3 absorbing the shared signal. Never read a coefficient
+  sign in isolation.
+
+**Why five measures rather than one:** they disagree, and the disagreement is
+the finding. LOCO ~0 with a large permutation delta means real but redundant
+information; both large means irreplaceable. `phat_NB` is the standout
+precisely because every measure agrees *and* it is the only technically clean
+feature in either table.
+
 ### What the "one-SE rule" is
 
 A standard way to pick a hyperparameter config that avoids chasing noise.
