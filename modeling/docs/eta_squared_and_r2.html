@@ -1,0 +1,299 @@
+<!-- Why eta-squared and R2 are the same quantity, and how the pool-association numbers read against their chance floor.
+     Published artifact: https://claude.ai/code/artifact/63a4da38-3a11-4704-b496-e35e90e6265d
+     Numbers regenerate from modeling/results/ and metadata_eda/pca/;
+     if those change, this page does NOT update itself. -->
+<title>Eta² and R²</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,600;1,400&family=Source+Sans+3:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<style>
+:root{
+  --ground:#F3F5F4;
+  --surface:#FFFFFF;
+  --edge:#DCE2E0;
+  --ink:#14201E;
+  --muted:#5C6A66;
+  --explained:#1B6E68;
+  --explained-soft:#D5E6E4;
+  --residual:#A79A8F;
+  --residual-soft:#E8E3DE;
+  --flag:#B4553C;
+  --flag-soft:#F3E1DA;
+  --measure:65ch;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#101615;
+    --surface:#18211F;
+    --edge:#2B3735;
+    --ink:#E8EDEB;
+    --muted:#93A19D;
+    --explained:#5CBDB4;
+    --explained-soft:#1E3A38;
+    --residual:#8B8078;
+    --residual-soft:#2A2724;
+    --flag:#E08A6B;
+    --flag-soft:#3A241C;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#101615;
+  --surface:#18211F;
+  --edge:#2B3735;
+  --ink:#E8EDEB;
+  --muted:#93A19D;
+  --explained:#5CBDB4;
+  --explained-soft:#1E3A38;
+  --residual:#8B8078;
+  --residual-soft:#2A2724;
+  --flag:#E08A6B;
+  --flag-soft:#3A241C;
+}
+
+*{box-sizing:border-box}
+body{
+  background:var(--ground);
+  color:var(--ink);
+  font-family:"Source Sans 3",system-ui,-apple-system,sans-serif;
+  font-size:17px;
+  line-height:1.62;
+  padding-block:clamp(2.5rem,6vw,4.5rem);
+  padding-left:max(20px,calc(50vw - var(--measure)/2));
+  padding-right:max(20px,calc(50vw - var(--measure)/2));
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{display:flex;flex-direction:column;gap:2.2rem;max-width:var(--measure)}
+
+h1{
+  font-family:Spectral,Georgia,serif;
+  font-weight:600;
+  font-size:clamp(2.1rem,6vw,3rem);
+  line-height:1.1;
+  letter-spacing:-.015em;
+  text-wrap:balance;
+  margin:0;
+}
+h2{
+  font-family:Spectral,Georgia,serif;
+  font-weight:600;
+  font-size:1.42rem;
+  line-height:1.25;
+  text-wrap:balance;
+  margin:0 0 .5rem;
+}
+h3{font-size:.95rem;font-weight:600;margin:0 0 .35rem}
+p{margin:0 0 .85rem}
+p:last-child{margin-bottom:0}
+section>p:first-of-type{margin-top:0}
+a{color:var(--explained)}
+strong{font-weight:600}
+em{font-style:italic}
+
+.eyebrow{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:.7rem;
+  letter-spacing:.16em;
+  text-transform:uppercase;
+  color:var(--muted);
+  margin:0 0 .6rem;
+}
+.standfirst{font-size:1.1rem;color:var(--muted);max-width:56ch;margin:.9rem 0 0}
+header{border-bottom:1px solid var(--edge);padding-bottom:1.8rem}
+
+code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.88em}
+code{background:var(--surface);border:1px solid var(--edge);border-radius:3px;padding:.08em .32em}
+
+/* the central identity, given room */
+.formula{
+  background:var(--surface);
+  border:1px solid var(--edge);
+  border-left:3px solid var(--explained);
+  padding:1.2rem 1.3rem;
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:1.02rem;
+  line-height:1.75;
+  overflow-x:auto;
+}
+.formula .exp{color:var(--explained);font-weight:500}
+.formula .res{color:var(--residual);font-weight:500}
+.formula .note{color:var(--muted);font-size:.82rem}
+
+pre{
+  background:var(--surface);
+  border:1px solid var(--edge);
+  border-radius:4px;
+  padding:1rem 1.1rem;
+  overflow-x:auto;
+  margin:0;
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:.83rem;
+  line-height:1.6;
+}
+pre .c{color:var(--muted)}
+
+/* explained / residual as one reusable object */
+.bar{display:flex;height:26px;border-radius:3px;overflow:hidden;border:1px solid var(--edge)}
+.bar .e{background:var(--explained)}
+.bar .r{background:var(--residual-soft);border-left:1px solid var(--edge)}
+.bars{display:flex;flex-direction:column;gap:1rem}
+.barrow{display:grid;grid-template-columns:1fr;gap:.35rem}
+.barhead{display:flex;justify-content:space-between;align-items:baseline;gap:1rem;font-size:.85rem}
+.barhead .name{font-family:"IBM Plex Mono",ui-monospace,monospace;font-weight:500}
+.barhead .val{color:var(--muted);font-variant-numeric:tabular-nums}
+
+.key{display:flex;flex-wrap:wrap;gap:1.1rem;font-size:.8rem;color:var(--muted);margin-top:.2rem}
+.key span{display:flex;align-items:center;gap:.4rem}
+.swatch{width:11px;height:11px;border-radius:2px;border:1px solid var(--edge);flex:none}
+
+.tablewrap{overflow-x:auto;border:1px solid var(--edge);border-radius:4px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:.9rem;min-width:34rem}
+th,td{text-align:left;padding:.62rem .85rem;border-bottom:1px solid var(--edge)}
+tr:last-child td{border-bottom:none}
+th{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--muted);font-weight:400;
+}
+td:first-child{font-family:"IBM Plex Mono",ui-monospace,monospace;font-weight:500;white-space:nowrap}
+.num{font-variant-numeric:tabular-nums}
+
+/* one flagged aside — the only place the warm accent appears */
+.flagbox{
+  background:var(--flag-soft);
+  border-left:3px solid var(--flag);
+  padding:1rem 1.2rem;
+  font-size:.94rem;
+}
+.flagbox h3{color:var(--flag)}
+
+.pair{display:grid;gap:1.1rem;grid-template-columns:repeat(auto-fit,minmax(15rem,1fr))}
+.note-card{background:var(--surface);border:1px solid var(--edge);border-radius:4px;padding:1rem 1.1rem;font-size:.94rem}
+
+footer{border-top:1px solid var(--edge);padding-top:1.4rem;font-size:.84rem;color:var(--muted)}
+:focus-visible{outline:2px solid var(--explained);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+<div class="wrap">
+
+<header>
+  <p class="eyebrow">Variance decomposition · pluricon-prototype</p>
+  <h1>Eta² and R² are the same quantity</h1>
+  <p class="standfirst">They differ only in what counts as “the model.” Here is the identity, why <span class="mono">r</span> loses its sign on the way to R², and what that means for the pool-association numbers in the feature-importance tables.</p>
+</header>
+
+<section>
+  <h2>One formula, three names</h2>
+  <p>Every one of these answers the same question — <em>what fraction of a variable’s spread does my model account for?</em></p>
+  <div class="formula">
+    ratio = ( <span class="exp">SS<sub>total</sub> − SS<sub>residual</sub></span> ) / SS<sub>total</sub><br>
+    <span class="note">explained variance ÷ total variance</span>
+  </div>
+  <p style="margin-top:.9rem">The only thing that changes between them is <strong>what the model predicts</strong>, and therefore what counts as a residual.</p>
+
+  <div class="tablewrap" style="margin-top:1rem">
+    <table>
+      <thead><tr><th>measure</th><th>predictor</th><th>model predicts</th><th>residual is</th></tr></thead>
+      <tbody>
+        <tr><td>R²</td><td>continuous</td><td>the fitted line</td><td>distance to the line</td></tr>
+        <tr><td>η²</td><td>categorical</td><td>that group’s mean</td><td>distance to your group’s mean</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p style="margin-top:1rem">That is the whole difference. <strong>η² is R² where the model is “predict every point by the mean of its group.”</strong></p>
+</section>
+
+<section>
+  <h2>Not analogous — identical</h2>
+  <p>The code in <code>008_technical_covariate_associations.py</code> is the formula above, with <span class="mono">ss_within</span> as the residual:</p>
+<pre><span class="c"># each point's residual = distance from its own pool's mean</span>
+ss_total    = ((values - grand_mean) ** 2).sum()
+group_means = values.groupby(pool).transform("mean")
+ss_within   = ((values - group_means) ** 2).sum()
+return (ss_total - ss_within) / ss_total</pre>
+  <p style="margin-top:.9rem">Now regress the same feature on 9 pool dummy variables by ordinary least squares. The fitted values <em>are</em> the group means — that is what OLS on dummies gives you. So the R² of that regression equals η², to the last decimal. One-way ANOVA <em>is</em> linear regression on dummies.</p>
+</section>
+
+<section>
+  <h2>Where <span class="mono" style="font-size:.9em">r</span> fits, and where its sign goes</h2>
+  <p>For simple linear regression with one continuous predictor:</p>
+  <div class="formula">R² = <span class="exp">r²</span></div>
+  <p style="margin-top:.9rem">That is the entire relationship. And it explains the loss: <span class="mono">r = −0.8</span> and <span class="mono">r = +0.8</span> both give <span class="mono">R² = 0.64</span>. <strong>Squaring destroys direction.</strong> R² tells you <em>how much</em> variance is explained, never <em>which way</em>.</p>
+  <p>η² inherits that, which is fine here — pool is nominal. There is no ordering, so “the feature increases with pool” would be meaningless. You cannot compute <span class="mono">r</span> against a categorical variable at all.</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th></th><th>range</th><th>signed</th><th>predictor</th></tr></thead>
+      <tbody>
+        <tr><td>r</td><td class="num">−1 … +1</td><td>yes</td><td>continuous</td></tr>
+        <tr><td>R²</td><td class="num">0 … 1</td><td>no</td><td>continuous</td></tr>
+        <tr><td>η²</td><td class="num">0 … 1</td><td>no</td><td>categorical</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p style="margin-top:1rem"><span class="mono">√η²</span> — the <strong>correlation ratio</strong> — puts it back on <span class="mono">|r|</span>’s scale. PC2’s 0.764 becomes 0.87.</p>
+</section>
+
+<section>
+  <h2>Read against the chance floor, not against zero</h2>
+  <p>Fitting 10 pools (9 dummies) to 159 rows explains variance even for a feature with no pool structure whatsoever. Permuting a random feature 2,000 times over the real pool labels:</p>
+  <div class="formula">
+    null η²  mean <span class="res">0.057</span>, 95th pct <span class="res">0.105</span><br>
+    <span class="note">chance level ≈ (k−1)/(n−1) = 9/158 = 0.057</span>
+  </div>
+
+  <div class="bars" style="margin-top:1.4rem">
+    <div class="barrow">
+      <div class="barhead"><span class="name">phat_NB</span><span class="val">η² = 0.037 · √η² = 0.19</span></div>
+      <div class="bar"><div class="e" style="width:3.7%"></div><div class="r" style="width:96.3%"></div></div>
+    </div>
+    <div class="barrow">
+      <div class="barhead"><span class="name">null (random feature)</span><span class="val">η² = 0.057 · chance</span></div>
+      <div class="bar"><div class="e" style="width:5.7%"></div><div class="r" style="width:94.3%"></div></div>
+    </div>
+    <div class="barrow">
+      <div class="barhead"><span class="name">PC1</span><span class="val">η² = 0.490 · √η² = 0.70</span></div>
+      <div class="bar"><div class="e" style="width:49%"></div><div class="r" style="width:51%"></div></div>
+    </div>
+    <div class="barrow">
+      <div class="barhead"><span class="name">PC2</span><span class="val">η² = 0.764 · √η² = 0.87</span></div>
+      <div class="bar"><div class="e" style="width:76.4%"></div><div class="r" style="width:23.6%"></div></div>
+    </div>
+    <div class="barrow">
+      <div class="barhead"><span class="name">PC5</span><span class="val">η² = 0.788 · √η² = 0.89</span></div>
+      <div class="bar"><div class="e" style="width:78.8%"></div><div class="r" style="width:21.2%"></div></div>
+    </div>
+    <div class="key">
+      <span><i class="swatch" style="background:var(--explained)"></i> variance explained by pool</span>
+      <span><i class="swatch" style="background:var(--residual-soft)"></i> everything else</span>
+    </div>
+  </div>
+
+  <div class="flagbox" style="margin-top:1.5rem">
+    <h3>phat_NB sits below chance</h3>
+    <p style="margin:0">At 0.037 it scores <em>lower than a random feature would</em>. That is a stronger claim than the “Low” bucket label carries: there is no detectable pool structure in it at all. Every other feature in the table sits far above the floor (p &lt; 0.0005).</p>
+  </div>
+  <p style="margin-top:1rem">It also shows the bucket thresholds are generous at the bottom — “Low” is &lt; 0.15, but chance alone is ~0.057, so that band is only about 2× chance.</p>
+</section>
+
+<section>
+  <h2>Two things worth carrying</h2>
+  <div class="pair">
+    <div class="note-card">
+      <h3>η² is more general than r — in one direction</h3>
+      <p style="margin:0"><span class="mono">r</span> detects only <strong>linear</strong> association. η² detects <em>any</em> difference in group means. Bin a continuous predictor with a U-shaped relationship and <span class="mono">r ≈ 0</span> while η² is large. It catches curvature <span class="mono">r</span> is blind to — at the cost of discarding order.</p>
+    </div>
+    <div class="note-card">
+      <h3>η² is upward-biased, like R²</h3>
+      <p style="margin:0">Add groups and it only rises — that is the chance floor. The bias-corrected analogue is <strong>ω²</strong>, ANOVA’s answer to adjusted R². Using ω² would subtract the floor automatically, and is arguably what the pipeline should report — though with everything but <span class="mono">phat_NB</span> far above it, no conclusion here would change.</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  Numbers from <span class="mono">modeling/results/feature_importance_table_regression_ridge.csv</span> and a 2,000-draw permutation null over the 159 qualifying (cell_line, pool) rows across 10 pools.
+</footer>
+
+</div>

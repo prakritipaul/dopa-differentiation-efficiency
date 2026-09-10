@@ -19,7 +19,10 @@ modeling/
                  (`_full` = baseline basis, `_qualonly` = restricted-fit variant)
   results/       CV grids, nested per-fold selections, feature-importance tables
   docs/          PCA_interpretation.md, feature_importance_plan.md,
-                 pool_correction_investigation.md
+                 pool_correction_investigation.md, plus two standalone
+                 HTML explainers (open in a browser):
+                 eta_squared_and_r2.html  -- what the pool eta^2 column means
+                 roc_auc_and_pr_auc.html  -- ROC/PR, and the 100%-precision point
   plots/         diagnostic figures
   archive/       superseded first-pass artifacts, kept for provenance only --
                  nothing reads these
