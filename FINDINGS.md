@@ -16,20 +16,26 @@ Method detail lives in `modeling/README.md`; PC biology in
 
 ## 1. Model performance
 
-All numbers are **donor-grouped nested CV** (no line from a training
-donor appears in test), mean ± SD across 10 repeats. Model per task was
+Nested CV, mean ± SD across 10 repeats. Model per task was
 **pre-registered before looking at results** to avoid cherry-picking.
+`plain` ignores donors; `donor-grouped` never lets a line from a training
+donor appear in test.
 
-| task | model | metric | baseline basis | qualifying-only basis |
+| task | model | metric | plain 5-fold | donor-grouped 5-fold |
 |---|---|---|---|---|
-| classification | **logistic_l2** *(pre-registered)* | ROC-AUC | **0.947 ± 0.007** | 0.948 ± 0.016 |
-| classification | logistic_l1 *(secondary)* | ROC-AUC | 0.951 ± 0.008 | 0.950 ± 0.006 |
-| regression | **ridge** *(pre-registered)* | R² | **0.653 ± 0.021** | 0.667 ± 0.012 |
-| regression | lasso *(secondary)* | R² | 0.669 ± 0.015 | 0.673 ± 0.011 |
+| classification | **logistic_l2** *(pre-registered)* | ROC-AUC | 0.940 ± 0.012 | **0.947 ± 0.007** |
+| classification | logistic_l1 *(secondary)* | ROC-AUC | 0.948 ± 0.011 | 0.951 ± 0.008 |
+| regression | **ridge** *(pre-registered)* | R² | 0.676 ± 0.013 | **0.653 ± 0.021** |
+| regression | lasso *(secondary)* | R² | 0.680 ± 0.016 | 0.669 ± 0.015 |
 
-Classification, headline model, full metric set: ROC-AUC 0.947,
-PR-AUC 0.968, balanced accuracy 0.913, sensitivity 0.940,
+Classification, headline model, donor-grouped, full metric set: ROC-AUC
+0.947, PR-AUC 0.968, balanced accuracy 0.913, sensitivity 0.940,
 specificity 0.886, Brier 0.097.
+
+**The PCA fitting population barely matters.** Every figure here uses the
+baseline basis. Refitting the whole pipeline on cells from the 138 study
+lines only moves the donor-grouped results by +0.014 R² (ridge), +0.004
+(lasso), +0.001 AUC (L2), −0.001 (L1) — all inside about one SD. See §3.
 
 **Best model: L2-penalised logistic regression on the binary task.**
 The L1 variants score marginally higher but the difference is well inside

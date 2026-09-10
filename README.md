@@ -78,28 +78,37 @@ and a fixed seed. Features standardised on training folds only.
 
 ## Results
 
-Donor-grouped nested CV, mean ± SD across 10 repeats.
+Nested CV, mean ± SD across 10 repeats. `plain` ignores donors;
+`donor-grouped` never lets a donor appear in both train and test.
 
-| task | model | metric | score |
-|---|---|---|---|
-| classification | **logistic_l2** | ROC-AUC | **0.947 ± 0.007** |
-| classification | logistic_l1 | ROC-AUC | 0.951 ± 0.008 |
-| regression | **ridge** | R² | **0.653 ± 0.021** |
-| regression | lasso | R² | 0.669 ± 0.015 |
+| task | model | metric | plain 5-fold | donor-grouped 5-fold |
+|---|---|---|---|---|
+| classification | **logistic_l2** | ROC-AUC | 0.940 ± 0.012 | **0.947 ± 0.007** |
+| classification | logistic_l1 | ROC-AUC | 0.948 ± 0.011 | 0.951 ± 0.008 |
+| regression | **ridge** | R² | 0.676 ± 0.013 | **0.653 ± 0.021** |
+| regression | lasso | R² | 0.680 ± 0.016 | 0.669 ± 0.015 |
 
-Classification, headline model: PR-AUC 0.968, balanced accuracy 0.913,
-sensitivity 0.940, specificity 0.886, Brier 0.097.
+Classification, headline model, donor-grouped: PR-AUC 0.968, balanced
+accuracy 0.913, sensitivity 0.940, specificity 0.886, Brier 0.097.
 
 **Best model: L2-logistic on the binary task.** The L1 variants edge it
 but well within one SD, and were not pre-registered.
+
+**Donor grouping costs regression a little and classification nothing** —
+ridge −0.023 R², lasso −0.011, while both classification models are flat
+or slightly better. LOCO/LODO agree (0.682/0.665 R², 0.942/0.963 AUC), so
+donor leakage is real but small, about 0.012 R².
 
 ⚠️ **The regression R² mostly reflects separating the two outcome clumps,
 not fine-grained accuracy.** Within-success R² is only ~0.17–0.22 and
 within-failure R² is strongly negative. Use this for success/failure
 calls, not as an efficiency estimate.
 
-Stable across CV schemes (0.653–0.682 R², 0.940–0.963 AUC). Donor leakage
-is real but small — about 0.012 R².
+**The PCA fitting population barely matters.** Refitting the whole
+pipeline on cells from the 138 study lines only shifts donor-grouped
+results by +0.014 R² (ridge), +0.004 (lasso), ±0.001 AUC — all inside one
+SD. It does roughly halve regression's across-repeat SD (0.021 → 0.012),
+so it is somewhat more stable, but no conclusion changes.
 
 ## Which features matter
 
@@ -152,7 +161,7 @@ modeling/        the pipeline (see modeling/README.md)
 
 ```bash
 uv sync
-uv run pytest modeling/ -m "not slow"     # 30 tests
+uv run pytest modeling/ -m "not slow"     # 51 tests
 uv run python -m modeling.run_classification
 ```
 
