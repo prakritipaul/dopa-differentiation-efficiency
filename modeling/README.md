@@ -168,6 +168,34 @@ after seeing results) as: fewest PCs first, then strongest regularization
 (larger `alpha` for ridge/lasso; smaller `C` for logistic, since `C` is
 inverse regularization strength).
 
+**The one-SE rule is applied ONLY in flat CV, never inside nested CV.**
+`select_winning_config_one_se` lives in `feature_importance.py` and is called
+only from there, on the flat grid. Nested CV's inner loop
+(`harness.run_nested_cv`) takes the **raw argmax** of the mean inner score:
+
+```python
+mean_inner = float(np.mean(inner_scores))
+if mean_inner > best_score:                 # plain argmax, no tolerance band
+    best_score, best_combo = mean_inner, (k, param_combo)
+```
+
+This is not a correctness problem -- nested CV stays unbiased either way,
+because the selection happens inside the outer fold and never sees the
+outer-test lines. But it is worth knowing for two reasons:
+
+1. **The inner loop is the noisier of the two selections**, not the cleaner
+   one. It ranks the same 55 candidates using only 3 inner folds of ~36
+   validation lines each, versus flat's 10 repeats over all 138. If argmax on
+   55 candidates is a noise peak anywhere, it is there.
+2. **It partly explains the hyperparameter instability documented below** --
+   the modal nested config winning only ~9-10 of 50 outer folds is exactly
+   what raw argmax over 55 near-tied candidates on small inner folds
+   produces. A one-SE (or any tolerance) rule in the inner loop would
+   concentrate those selections considerably.
+
+Applying it there would change reported performance, so it has not been done
+on a whim; it is a live option rather than an oversight.
+
 Implementation note: the tolerance band is SD_across_repeats /
 sqrt(n_repeats), with n_repeats read from the fold-assignment data. (An
 earlier version used the raw SD, which is ~3x too wide at 10 repeats --
@@ -632,7 +660,8 @@ precisely so the gap is visible rather than implicit.
 │  │  ├─ Inner fold 0: ~74 train / ~36 validate -> score every candidate
 │  │  ├─ Inner fold 1: ~74 train / ~36 validate -> score every candidate
 │  │  └─ Inner fold 2: ~74 train / ~36 validate -> score every candidate
-│  ├─ Average the 3 inner scores per candidate; pick the best
+│  ├─ Average the 3 inner scores per candidate; pick the best (raw argmax --
+  │     the one-SE rule is NOT applied here, see "What the one-SE rule is")
 │  ├─ Discard the three inner models
 │  ├─ Refit ONE model on all 110 outer-training lines
 │  └─ Predict the 28 outer-test lines ONCE
