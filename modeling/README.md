@@ -963,23 +963,46 @@ post-fix runs. Everything below is the pre-registered configuration:
 
 ### Headline (pre-registered model per task)
 
-| task | model | baseline | qualifying-only |
+Nested CV, no pool-correction, mean +/- SD across 10 repeats. Columns are the
+two repeated schemes: `plain` ignores donors, `donor_grouped` never lets a
+donor appear in both train and test.
+
+| task | model | plain 5-fold | donor-grouped 5-fold |
 |---|---|---|---|
-| regression | **ridge** | R2 = 0.6531 +/- 0.0211 | **R2 = 0.6672 +/- 0.0124** |
-| classification | **logistic_l2** | ROC-AUC = 0.9470 +/- 0.0070 | **ROC-AUC = 0.9483 +/- 0.0157** |
+| regression | **ridge** | R2 = 0.6763 +/- 0.0133 | **R2 = 0.6531 +/- 0.0211** |
+| classification | **logistic_l2** | ROC-AUC = 0.9396 +/- 0.0123 | **ROC-AUC = 0.9470 +/- 0.0070** |
+
+Headline metrics for the pre-registered models, donor-grouped: ridge
+MAE 0.138 / RMSE 0.175; logistic_l2 PR-AUC 0.968 / balanced accuracy 0.913.
 
 ### Secondary (L1 variants -- NOT the headline; see "Results distillation")
 
-| task | model | baseline | qualifying-only |
+| task | model | plain 5-fold | donor-grouped 5-fold |
 |---|---|---|---|
-| regression | lasso | R2 = 0.6685 +/- 0.0150 | R2 = 0.6725 +/- 0.0108 |
-| classification | logistic_l1 | ROC-AUC = 0.9512 +/- 0.0081 | ROC-AUC = 0.9500 +/- 0.0060 |
+| regression | lasso | R2 = 0.6799 +/- 0.0157 | R2 = 0.6685 +/- 0.0150 |
+| classification | logistic_l1 | ROC-AUC = 0.9480 +/- 0.0114 | ROC-AUC = 0.9512 +/- 0.0081 |
 
-Restricting the PCA fit to the study population helps regression modestly
-(+0.014 R2) and roughly halves its across-repeat SD; classification is a
-wash (AUC +0.001, SD doubled). Full discussion in "Fitting population"
-above, including why the two importance tables must NOT be compared by PC
-label.
+**Donor grouping costs regression a little and classification nothing.**
+Ridge loses 0.023 R2 (0.676 -> 0.653) and lasso 0.011 (0.680 -> 0.669). Both classification models are flat or slightly *better*
+under grouping (L2 0.940 -> 0.947, L1 0.948 -> 0.951), which is the same
+conclusion the LOCO/LODO contrast gives: donor leakage is real but small for
+regression and absent for classification.
+
+**The PCA fitting population barely matters.** Every number above uses the
+baseline basis. Refitting the whole pipeline on the qualifying-cells-only
+basis moves the donor-grouped results by:
+
+| model | delta |
+|---|---|
+| ridge | +0.0141 R2 |
+| lasso | +0.0040 R2 |
+| logistic_l2 | +0.0013 AUC |
+| logistic_l1 | -0.0013 AUC |
+
+All within about one SD, and only ridge moves by more than a rounding error.
+The variant does roughly halve regression's across-repeat SD (0.021 ->
+0.012), so it is a little more stable, but no conclusion changes either way.
+Full comparison in "Fitting population: the qualifying-only PCA variant".
 
 ### Configurations selected
 
