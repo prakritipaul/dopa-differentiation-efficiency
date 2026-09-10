@@ -163,7 +163,26 @@ and `phat_P_FPP` reads `reference`.
 | **LOCO delta** | **Refit** without that feature, same folds and config; paired per fold, `score_with - score_without`, then averaged. | Positive = removing it hurt = it helps. In headline-metric units. Because the model is refit, a real but **redundant** feature scores ~0. | `phat_NB` +0.051 AUC |
 | **Perm delta** | Take the **already-fitted** model, shuffle that column in the test matrix, re-score. Paired per fold. Proportions shuffled as a block. | Positive = this model relies on it. No refit, so it measures dependence, not irreplaceability. | `phat_FPP` 0.277 -- yet its LOCO is 0.0 |
 | **SHAP** | `mean abs(coef_j * z_ij)` over the 138 lines, `z` = standardized value. | Average magnitude of the feature's push on one prediction. | `phat_NB` 1.190 vs `PC2` 0.514 |
-| **Technical covariate** | eta^2 of the feature on pool identity: `(SS_total - SS_within)/SS_total`. | 0..1 = fraction of the feature's variance explained by **which pool** a line came from. Says nothing about the outcome -- it flags the feature. >=0.5 High, >=0.15 Moderate, else Low. | `phat_NB` 0.04 clean; `PC2` 0.76 mostly batch |
+| **Technical covariate** | eta^2 of the feature on pool identity: `(SS_total - SS_within)/SS_total`. | 0..1 = fraction of the feature's variance explained by **which pool** a line came from. Says nothing about the outcome -- it flags the feature. >=0.5 High, >=0.15 Moderate, else Low. Compare against the chance floor below, not against 0. | `phat_NB` 0.04 clean; `PC2` 0.76 mostly batch |
+
+**eta^2 has a chance floor -- read it against that, not against 0.** Fitting
+10 pools (9 dummies) to 159 rows explains some variance even for a feature
+with no pool structure at all. Permuting a random feature 2,000 times over
+the real pool labels gives:
+
+```
+null eta^2:  mean 0.057, 95th percentile 0.105
+             (chance level ~ (n_pools-1)/(n-1) = 0.057)
+```
+
+So the "Low" band (<0.15) is only about 2x chance. Against that null, every
+PC and both of `phat_FPP` / `phat_P_FPP` sit far above chance (p < 0.0005),
+while **`phat_NB` at 0.037 is at or below what a random feature scores** --
+a stronger statement than "Low": there is no detectable pool structure in it
+at all.
+
+`sqrt(eta^2)` is the correlation ratio, comparable in scale to `abs(r)`:
+PC2's 0.764 -> 0.87, `phat_NB`'s 0.037 -> 0.19.
 
 Two honest caveats:
 
