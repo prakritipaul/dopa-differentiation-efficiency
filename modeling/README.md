@@ -134,7 +134,9 @@ repeat 0). Two things visible there that the numbers alone didn't show:
 ## Which features matter (feature importance)
 
 `feature_importance.py` -> `results/feature_importance_table_{task}_{model}.csv`.
-Design and caveats in `docs/feature_importance_plan.md`. Results below are on
+Design and caveats in `docs/feature_importance_plan.md`. The single
+configuration these tables are fitted at comes from the **flat** grid, not
+nested -- see "Flat vs nested: which is used for what" for why. Results below are on
 the full 258-fold data; they were essentially unchanged from the 5-repeat
 first pass (selection frequencies firmed up slightly, LOCO deltas moved
 by <0.005), so they look stable.
@@ -537,16 +539,241 @@ stage. `features.py`/`harness.py` still support it if revisited.
 ## Setup
 - 138 lines, one row each. Regression (`diff_efficiency`) + classification (`>=0.2`), same features/folds for both.
 - Features: 3 D11 proportions (always in) + up to 10 PCs, `k=0..10` tuned by truncating one PCA fit (no refit per k).
-- Hyperparams: `k` (#PCs) and regularization strength (ridge/lasso `alpha`, logistic `C`).
 - Models, full parallel arms: Ridge + Lasso (regression); L2 + L1 logistic (classification).
+
+### Hyperparameters: 55 configurations per model
+
+Two are tuned, jointly: `k` (11 values) x regularisation strength (5 values).
+
+| hyperparameter | values | n |
+|---|---|---|
+| `k` -- number of PCs | 0, 1, 2, ... 10 | **11** |
+| regularisation strength | see per-model grid below | **5** |
+
+`k=0` means proportions only. The 2 modelled proportions are always in; `k`
+controls how many PCs join them. PCs are hierarchical, so `k` truncates
+columns from one PCA fit -- no refit per `k`.
+
+| model | task | parameter | values |
+|---|---|---|---|
+| ridge | regression | `alpha` | 0.01, 0.1, 1, 10, 100 |
+| lasso | regression | `alpha` | 0.001, 0.01, 0.1, 1, 10 |
+| logistic_l2 | classification | `C` | 0.01, 0.1, 1, 10, 100 |
+| logistic_l1 | classification | `C` | 0.01, 0.1, 1, 10, 100 |
+
+**`C` is sklearn's inverse regularisation strength** -- the logistic
+equivalent of `alpha`, running the opposite direction (`C` ~ 1/`alpha`):
+
+- `alpha` **up** -> more regularisation -> coefficients shrink
+- `C` **up** -> *less* regularisation -> coefficients grow freely
+
+That inversion is why "simplest" in the one-SE rule means *larger alpha,
+smaller C*: both mean more heavily regularised.
+
+Lasso's `alpha` grid sits one decade lower (0.001-10) because L1 shrinks
+coefficients to exactly zero, so it needs smaller values before it stops
+zeroing out everything.
 
 ## CV — both variants run, neither "primary"
 - **Plain split**: ordinary split over the 138 rows (grouping by cell_line is a no-op here — each row is already one whole line).
-- **Donor-grouped split**: lines sharing a donor forced into the same fold (136/138 lines have a donor-sibling; one donor has 18 lines).
+- **Donor-grouped split**: lines sharing a donor forced into the same fold (136/138 lines have a donor-sibling; one donor has 18 lines). See "What donor_grouped actually does" below.
 - **LOCO + LODO**: full leave-one-line-out and leave-one-donor-out runs, as comparability checks vs. the paper's (non-donor-grouped) LOOCV.
-- **Flat CV + nested CV**: both run and reported (flat = grid search, report best mean CV score; nested = outer loop for honest estimate, inner loop tunes `k`/regularization). Inner tuning metric: PR-AUC (classification), MAE (regression).
+- **Flat CV + nested CV**: both run (flat = grid search, report best mean CV score; nested = outer loop for honest estimate, inner loop tunes `k`/regularization). Inner tuning metric: PR-AUC (classification), MAE (regression). They are used for **different jobs** -- see below.
 - **Repeated K-fold**: report mean ± SD **per repeat** — never pool predictions across repeats (double-counts each line); pooling *within* one repeat is fine.
 - **Weighting**: equal weight per line (not per donor).
+
+
+
+### Flat vs nested: which is used for what
+
+Both are computed for every scheme, but only one is ever quoted as
+performance. Per task, `results/results_{task}.csv` holds:
+
+| tuning | rows | what a row is | used for |
+|---|---|---|---|
+| flat | 440 | one `(scheme, model, k, param)` combination | the robustness grid, **and picking the config for the importance tables** |
+| nested | 8 | one `(scheme, model)` | **every reported performance number** |
+
+(440 = 4 schemes x 2 models x 11 `k` x 5 regularisation values; 8 = 4 schemes
+x 2 models.)
+
+**Every performance figure in this README is nested.** R2 0.653, AUC 0.947,
+the all-schemes table -- all nested. Flat scores are optimistically biased,
+because the same predictions are used both to choose the winning
+configuration and to report its score. They are never quoted as performance.
+
+**But the feature-importance tables take their configuration from the FLAT
+grid** (`feature_importance.py`, `select_winning_config_one_se`, which filters
+`tuning == "flat"`). That looks inconsistent and is deliberate:
+
+> Nested CV does not produce *a* configuration. It produces 50 of them -- one
+> per outer fold -- and they disagree substantially (the modal choice wins
+> only ~9-10 of 50; see "Hyperparameter selection is unstable"). There is
+> nothing to read a coefficient off.
+
+So to fit one set of coefficients and SHAP values you need one fixed model,
+and the one-SE rule scans the flat grid to choose it defensibly. Using flat
+here is safe because **the flat score is never reported** -- it is used only
+to *rank* configurations, not to claim performance.
+
+The consequence to keep in mind: **the importance tables and the headline
+numbers describe slightly different models.** The "Configurations selected"
+table at the bottom lists both side by side (modal nested vs. one-SE flat)
+precisely so the gap is visible rather than implicit.
+
+
+### How nested CV actually runs (one repeat)
+
+```
+138 cell lines
+│
+├─ Outer fold 0: hold out 28 lines
+│  ├─ Use the remaining 110 for inner CV
+│  │  ├─ Inner fold 0: ~74 train / ~36 validate -> score every candidate
+│  │  ├─ Inner fold 1: ~74 train / ~36 validate -> score every candidate
+│  │  └─ Inner fold 2: ~74 train / ~36 validate -> score every candidate
+│  ├─ Average the 3 inner scores per candidate; pick the best
+│  ├─ Discard the three inner models
+│  ├─ Refit ONE model on all 110 outer-training lines
+│  └─ Predict the 28 outer-test lines ONCE
+│
+├─ Outer fold 1: 28 held-out lines predicted once
+├─ Outer fold 2: 27
+├─ Outer fold 3: 27
+└─ Outer fold 4: 28
+                 ───
+Final out-of-fold predictions: 28+28+27+27+28 = 138, each line exactly once
+```
+
+The 28 outer-test lines are invisible for the entire inner loop -- candidate
+scoring, selection and refit all happen inside the 110. Outer fold 0
+contributes 28 predictions, not 3 or 55.
+
+Per model, per outer fold: 55 candidates x 3 inner folds = **165 inner fits**,
+then 1 refit. Across 50 outer folds and 2 model families: **16,500 inner fits
++ 100 refits** per task.
+
+Totals for one reported number:
+
+| | |
+|---|---|
+| outer fitted models | 5 folds x 10 repeats = **50** |
+| final prediction values | 138 lines x 10 repeats = **1,380** |
+| metrics computed | **10** (one pooled AUC/R2 per repeat) |
+| reported | mean +/- SD across those 10 |
+
+### How flat CV runs -- and one thing it does NOT do
+
+**Flat CV does not select a config per fold and then compare folds.** There
+is no "best config for fold 0". Each candidate is scored the same pooled way
+the headline is:
+
+```
+for each of the 55 candidates:
+    for each repeat (10):
+        predict all 5 folds' held-out lines -> pool -> 138 predictions
+        -> ONE score for that (candidate, repeat)
+    -> 10 scores -> mean +/- SD across repeats
+compare the 55 candidates by that mean; apply the one-SE rule once
+```
+
+So a flat row's `mean +/- SD` is across the **10 repeats**, exactly like a
+nested row -- not across the 5 folds and not across the 28 lines in a fold.
+The config is chosen **once**, from 55 means, not 5 times and then reduced.
+
+The only structural difference from nested is *where the choice happens*:
+nested chooses inside each outer fold (so the choice never sees the test
+lines); flat chooses once, afterwards, over all the data. That is precisely
+why the flat score is optimistically biased and is never reported.
+
+### Best flat-CV configurations (donor_grouped)
+
+Selection metric is MAE for regression and ROC-AUC for classification; R2 and
+AUC shown for readability.
+
+| model | raw argmax | one-SE choice | configs within 1 SE |
+|---|---|---|---|
+| ridge | k=5, alpha=0.01 (R2 0.6801) | **k=5, alpha=0.1** (R2 0.6804) | 2/55 |
+| lasso | k=5, alpha=0.001 (R2 0.6838) | **k=5, alpha=0.001** (R2 0.6838) | 2/55 |
+| logistic_l2 | k=6, C=0.01 (AUC 0.9638) | **k=4, C=0.01** (AUC 0.9629) | 2/55 |
+| logistic_l1 | k=4, C=0.1 (AUC 0.9640) | **k=2, C=0.1** (AUC 0.9632) | 9/55 |
+
+The one-SE rule only moves the answer where the band is genuinely wide:
+`logistic_l1` has 9 statistically indistinguishable configs so it drops from
+k=4 to k=2, and `logistic_l2` from k=6 to k=4. For ridge and lasso only 2
+configs qualify, so it barely bites.
+
+### Reconciling the two: they produce different things
+
+The tension is real -- nested CV already does model selection, so why also
+run flat? Because they answer different questions and yield different kinds
+of output.
+
+| | question | output | score trustworthy? |
+|---|---|---|---|
+| nested | how well does *the procedure* generalise? | a **number** | yes -- this is the reported performance |
+| flat | which single configuration ranks best? | a **choice** | no -- never quoted |
+
+Nested CV evaluates the whole pipeline *including its own tuning step*, which
+is what makes it honest. That same property is why it **cannot hand you a
+model**: it fits 50, each choosing its own config, and they disagree (the
+modal choice wins only ~9-10 of 50). There is no single "the nested model" to
+read a coefficient off.
+
+So the division is:
+
+> **Performance claims come from nested. Configuration choices come from
+> flat. No number is ever taken from flat.**
+
+Being straight about the residual nuance: the flat ranking is computed over
+all 138 lines, so the chosen config has seen every outcome. For the
+coefficients and SHAP that is fine -- they are descriptive summaries of a
+full-data fit, not performance claims. For the LOCO and permutation deltas it
+is slightly less clean: those are measured out-of-fold but at a config chosen
+using all the data, a mild optimism. It largely cancels because the deltas
+are within-fold with/without comparisons at the same config, but "largely
+cancels" is not "does not exist". The alternative -- using the modal nested
+config -- is also defensible and close (regression: one-SE k=5 vs modal k=4);
+see "Configurations selected". The one-SE flat config was chosen because a
+mode that wins 9-10 times out of 50 is a weak summary.
+
+### What `donor_grouped` actually does
+
+Two things it is **not**: it does not put the same donors in every fold, and
+it does not average lines within a donor.
+
+**One row is always one cell line.** 138 rows, 138 predictions. The only
+averaging is pool-then-line on the features (mean per `(cell_line, pool)`,
+then unweighted mean across that line's pools). Donors are never collapsed;
+weighting is equal per line, not per donor.
+
+What it does: **every line from a given donor lands in the same fold**, so a
+donor is entirely in train or entirely in test, never split across the two.
+Different folds hold out different donors.
+
+`folds.py` passes `groups=lines["donor"]` to `StratifiedGroupKFold`. From the
+committed assignments, repeat 0 (138 lines, 20 donors, 5 folds):
+
+| fold | test lines | from donors |
+|---|---|---|
+| 0 | 28 | 2 |
+| 1 | 28 | 5 |
+| 2 | 27 | 3 |
+| 3 | 27 | 5 |
+| 4 | 28 | 5 |
+
+Donors appearing in both train and test of the same fold: **0**.
+
+Note fold 0 holds out 28 lines from only **2** donors -- that is the donor
+with 18 lines. Folds are balanced by line count, not donor count.
+
+**Why:** 136 of 138 lines share a donor with another line. Without grouping a
+model can memorise a donor's genotype from one line and be scored on its
+sibling. Grouping blocks that; it costs ~0.012 R2, which is the number
+quantifying donor leakage.
+
+Not to be confused with **LODO**, which is one fold per donor (20 folds,
+each holding out that donor's entire set of lines).
 
 ## Leakage safety
 - PCA/HVG refit **per fold**: exclude held-out lines' (or held-out donors' lines') cells from the fitting pool; project their cells into that fold's PCA space. Generalizes `005_d11_pca_features.py`'s `fit_mask` beyond just pool11.
@@ -568,6 +795,35 @@ stage. `features.py`/`harness.py` still support it if revisited.
 Full parallel grid (2 groupings × 2 tuning × 2 corrections × 2 model families, repeated K-fold, + LOCO/LODO) means potentially hundreds of fold-specific PCA refits (~90s each in `005`). Time one fold first; cache fold-specific fits before committing to the full run.
 
 ## Results distillation
+
+**"Headline model" = the single configuration reported as *the* result**, as
+opposed to the robustness grid of everything that was run. Without one there
+are 16 numbers per task (4 schemes x 2 tuning modes x 2 model families) and
+no answer -- and whichever gets quoted, a reader cannot tell whether it was
+chosen before or after seeing the scores.
+
+It is **pre-registered, not selected on performance**. Committed as constants
+in `run_experiment.py` and enforced by `select_headline()`:
+
+```python
+HEADLINE       = {"scheme": "donor_grouped", "tuning": "nested", "pool_correction": False}
+HEADLINE_MODEL = {"regression": "ridge", "classification": "logistic_l2"}
+```
+
+Each choice was made on design grounds, not on scores: `donor_grouped`
+because it is the strictest realistic test; `nested` because flat CV tunes
+and reports on the same rows; no pool-correction per the investigation below;
+ridge / logistic_l2 as the L2 default, with L1 as the variant.
+
+Note the L1 variants score *higher* (lasso R2 0.669 vs ridge 0.653;
+logistic_l1 AUC 0.951 vs 0.947). A paired per-repeat comparison at matched
+one-SE configs shows lasso's edge is real but tiny -- +0.0033 R2, winning
+9/10 repeats, t-test p=0.0006. Most of the larger headline gap is nested CV's
+per-fold reselection noise, not a model difference. They are reported as
+labelled secondary results; quoting them as "the" headline is exactly the
+cherry-picking the pre-registration exists to prevent, and that failure
+actually occurred once -- see "Corrections from the audit" #3.
+
 - Full grid still gets computed, but pre-register ONE headline config *before* looking at results, to avoid cherry-picking: **donor-grouped + nested CV + repeated stratified K-fold + Ridge/L2-logistic** (pool-correction dropped entirely -- see "Pool-correction dropped" above). Report this first, with mean ± SD.
 - Everything else (plain grouping, flat CV, Lasso/L1, LOCO/LODO) becomes a secondary "robustness grid" — one table/heatmap (rows = config, cols = key metric) to scan for consistency, not N separate headline results.
 
