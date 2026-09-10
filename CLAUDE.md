@@ -75,3 +75,9 @@ Why: this project has repeatedly produced work that ran to completion while
 silently dropping a step -- permutation importance computed then discarded,
 a "fully fixed" defect that was fixed in three of four places, a regenerated
 table nobody diffed. Each was a missing checklist item, not a coding error.
+
+Deliberately here and not a skill: a skill has to be invoked, and the moment
+a checklist is most needed is the moment it is least likely to be reached
+for. CLAUDE.md loads every session automatically. There is also no todo tool
+in this project, so a skill would have nothing to call -- it would emit the
+same markdown either way. Don't re-open this unless a todo tool appears.
