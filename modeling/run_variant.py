@@ -61,12 +61,12 @@ def main(suffix: str) -> None:
     for task in ("regression", "classification"):
         results = run_all(task, fold_features_csv, out_suffix=suffix)
         out_path = OUT_DIR / f"results/results_{task}{suffix}.csv"
-    out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
         results.to_csv(out_path, index=False)
 
         print(f"\n=== {task.upper()}: pre-registered headline "
               f"({HEADLINE['scheme']}, {HEADLINE['tuning']}, {HEADLINE_MODEL[task]}) ===")
-        print(compare_headline(task, OUT_DIR / f"results_{task}.csv", results).to_string(index=False))
+        print(compare_headline(task, OUT_DIR / f"results/results_{task}.csv", results).to_string(index=False))
         print(f"\nSaved {len(results)} rows to {out_path}")
 
 
