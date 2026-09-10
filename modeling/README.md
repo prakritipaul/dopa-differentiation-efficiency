@@ -610,6 +610,34 @@ zeroing out everything.
 - **Repeated K-fold**: report mean ± SD **per repeat** — never pool predictions across repeats (double-counts each line); pooling *within* one repeat is fine.
 - **Weighting**: equal weight per line (not per donor).
 
+### How the 138 lines are split, by scheme
+
+| scheme | folds per repeat | outer test set | repeated? | final result |
+|---|---|---|---|---|
+| plain 5-fold | 5 | 27-28 lines | 10x | 10 pooled metrics -> mean +/- SD |
+| donor-grouped 5-fold | 5 | **24-33** lines, all from held-out donors | 10x | 10 pooled metrics -> mean +/- SD |
+| LOCO | 138 | exactly **1** line | no | 138 predictions -> **one** pooled metric, no SD |
+| LODO | 20 | **1-18** lines (one donor's entire set) | no | 138 predictions -> **one** pooled metric, no SD |
+
+In every scheme a repeat's folds partition all 138 lines, so each line is
+predicted exactly once per repeat and the pooled metric is always computed on
+n=138. What differs is *how* the held-out set is chosen and how many times
+the split is redrawn.
+
+Three things this makes visible:
+
+- **Donor-grouped folds are uneven (24-33), plain folds are not (27-28).**
+  Grouping constrains whole donors into a fold, so sizes cannot be balanced
+  exactly. The donor with 18 lines forces one fold to be large.
+- **LOCO and LODO are not repeated**, because they are exhaustive -- there is
+  only one way to leave out each line, or each donor. Nothing to reshuffle,
+  so `repeat=0` for every fold and the reported SD is `NaN`, not zero. Their
+  numbers are single estimates and are not directly comparable to the
+  repeat-averaged schemes.
+- **LOCO cannot support per-fold metrics at all** (a one-line test set has no
+  ROC-AUC), which is the clearest illustration of why metrics are pooled
+  within a repeat rather than averaged across folds.
+
 
 
 ### Flat vs nested: which is used for what
