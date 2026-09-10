@@ -40,7 +40,12 @@ def compare_headline(task: str, baseline_csv: Path, variant: pd.DataFrame) -> pd
     cols = METRICS[task]
     var_row = select_headline(variant, task)
     rows = [{"run": "variant", **{c: var_row[c].iloc[0] for c in cols}}]
-    if baseline_csv.exists():
+    if baseline_csv is not None:
+        # A path that doesn't resolve is a bug, not "no baseline": silently
+        # printing a one-row table would hide exactly the comparison this
+        # script exists to make. Pass None to mean "no baseline".
+        if not baseline_csv.exists():
+            raise FileNotFoundError(f"baseline results not found: {baseline_csv}")
         base_row = select_headline(pd.read_csv(baseline_csv), task)
         if len(base_row):
             rows.insert(0, {"run": "baseline", **{c: base_row[c].iloc[0] for c in cols}})
