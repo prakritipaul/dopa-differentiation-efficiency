@@ -29,3 +29,27 @@ def test_numbered_script_imports(name):
     # only executes module-level definitions.
     spec = importlib.util.spec_from_file_location(name[:-3], REPO_ROOT / name)
     spec.loader.exec_module(importlib.util.module_from_spec(spec))
+
+
+def test_numbered_script_output_paths_resolve():
+    """Every OUT_DIR / "..." literal in the EDA scripts must land in a real
+    directory.
+
+    These scripts are never run by the test suite -- they stream multi-GB h5
+    files -- so a reorganisation can silently repoint their writes. Checking
+    the literals statically is cheap and catches the whole failure mode:
+    a wrong prefix, or a missing one that would dump output at the
+    metadata_eda/ root instead of its subdirectory.
+    """
+    import re
+
+    out_dir = REPO_ROOT / "metadata_eda"
+    broken = []
+    for script in REPO_ROOT.glob("0*.py"):
+        for m in re.finditer(r'OUT_DIR\s*/\s*f?"([^"]+\.(?:csv|png))"', script.read_text()):
+            literal = m.group(1)
+            if "/" not in literal:
+                broken.append(f"{script.name}: {literal!r} has no subdirectory prefix")
+            elif not (out_dir / literal).parent.is_dir():
+                broken.append(f"{script.name}: {literal!r} -> parent directory does not exist")
+    assert not broken, "output paths would not resolve:\n  " + "\n  ".join(broken)
