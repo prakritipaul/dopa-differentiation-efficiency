@@ -129,6 +129,11 @@ second independent Codex review already caught a case where a previous
 (`modeling/README.md:474`). An audit protocol you have to remember to invoke is
 one you will skip on exactly the change that needed it.
 
+The skill is tracked at `.claude/skills/continuous-independent-audit/`. That
+copy is canonical; a global one may also exist in `~/.claude/skills/`. Edit the
+repo copy, and if you touch the global one, sync it back here in the same
+change -- two homes drifting apart is the failure this project keeps repeating.
+
 Repo-specific settings, which override the skill's own defaults:
 
 - **Ledger:** `modeling/docs/audit_ledger.md`, not `audit/ledger.md`. It holds
