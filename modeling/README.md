@@ -74,10 +74,13 @@ reported below as secondary.
 
 | task | model | key metrics |
 |---|---|---|
-| regression (**headline**) | ridge | MAE=0.138, RMSE=0.176, **R2=0.653 ± 0.021** |
-| regression (secondary) | lasso | MAE=0.135, RMSE=0.172, R2=0.668 ± 0.015 |
-| classification (**headline**) | logistic_l2 | **ROC-AUC=0.943 ± 0.008**, PR-AUC=0.965, balanced_acc=0.906 |
-| classification (secondary) | logistic_l1 | ROC-AUC=0.951 ± 0.008, PR-AUC=0.970, balanced_acc=0.913 |
+| regression (**headline**) | ridge | MAE=0.138, RMSE=0.175, **R2=0.653 +/- 0.021** |
+| regression (secondary) | lasso | MAE=0.135, RMSE=0.172, R2=0.668 +/- 0.015 |
+| classification (**headline**) | logistic_l2 | **ROC-AUC=0.947 +/- 0.007**, PR-AUC=0.968, balanced_acc=0.913 |
+| classification (secondary) | logistic_l1 | ROC-AUC=0.951 +/- 0.008, PR-AUC=0.970, balanced_acc=0.912 |
+
+Full metric set for every model and scheme is in "Latest results" at the
+bottom; what each metric means and why it is in the set is under "Metrics".
 
 D11 features are clearly predictive of D52 differentiation efficiency,
 even under the strict donor-grouped (never-seen-donor) test. Going from
@@ -897,8 +900,70 @@ each holding out that donor's entire set of lines).
 - Known unfixable limitation: D11/D52 cell-type labels came from the paper's own global clustering, not refit per fold — diffuse, minor, unavoidable.
 
 ## Metrics
-- Classification: ROC-AUC, PR-AUC, balanced accuracy, sensitivity/specificity @ 0.2, F1, confusion matrix, calibration (Brier); vs. majority-class + prevalence baselines. Keep the 0.2 *outcome* threshold separate from the probability *decision* threshold (default 0.5).
-- Regression: MAE, RMSE, R²; vs. mean/median baseline; check [0,1] violations; residuals near 0.2.
+
+**Two different thresholds, easily confused.** `0.2` is the *outcome*
+threshold that turns `diff_efficiency` into the success/failure label --
+it defines the question. `0.5` is the *decision* threshold that turns a
+predicted probability into a hard call (`harness.DECISION_THRESHOLD`).
+Sensitivity, specificity, balanced accuracy and F1 are all computed at
+**0.5**, not 0.2. (An earlier version of this line said "@ 0.2", which
+conflated exactly the two things the next sentence warned about.)
+
+### Classification
+
+| metric | what it is | what it is sensitive to | trivial baseline |
+|---|---|---|---|
+| **ROC-AUC** | P(a random success scores above a random failure) | ranking only; threshold-free and unaffected by where you set the cutoff | 0.500 |
+| **PR-AUC** | area under precision-recall; ignores true negatives entirely | the positive class; false alarms cannot hide behind a big negative class | **prevalence, 0.696** |
+| **balanced accuracy** | (sensitivity + specificity) / 2 at the 0.5 cutoff | both classes equally, regardless of imbalance | 0.500 |
+| **sensitivity** | of true successes, the fraction called success | misses on the majority class | 1.000 |
+| **specificity** | of true failures, the fraction called failure | misses on the **minority** class -- the one that matters here | 0.000 |
+| **F1** | harmonic mean of precision and recall, success as positive | the positive class only; ignores true negatives | **0.821** |
+| **Brier** | mean squared error of the predicted probability (lower better) | *calibration* -- whether a "0.8" means 80% | 0.212 |
+
+**Why this set rather than one number.** Each covers a failure the others
+miss:
+
+- **Accuracy is disqualified outright.** 70% of lines succeed, so guessing
+  "success" every time scores 0.70. Balanced accuracy replaces it.
+- **ROC-AUC checks ranking, Brier checks the numbers.** A model can rank
+  perfectly (AUC 1.0) while every probability is wrong -- and these
+  probabilities matter, because the useful operating point is chosen by
+  moving the threshold. Only Brier catches that.
+- **PR-AUC covers ROC-AUC's blind spot at imbalance.** With 96 negatives
+  available, false positives get diluted in the false-positive rate but
+  not in precision.
+- **Sensitivity and specificity are reported separately**, not just as
+  their average, because they fail asymmetrically. The interesting class
+  here is the 42 failures, and specificity is the metric that tracks them
+  -- balanced accuracy alone would hide a specificity collapse behind high
+  sensitivity.
+- **F1 is reported for convention, not evidence.** Its trivial baseline is
+  **0.821** on this data, so a "good" F1 of 0.945 is far less impressive
+  than it looks. It is in the table mainly so nobody has to recompute it.
+
+Every baseline is in the results table so each metric can be read against
+what guessing achieves, rather than against 0 or 1.
+
+### Regression
+
+| metric | what it is | why it is here | trivial baseline |
+|---|---|---|---|
+| **R2** | fraction of outcome variance explained | the conventional summary; comparable across datasets | 0.000 |
+| **MAE** | mean absolute error, in efficiency units | directly interpretable -- "typically wrong by 0.138 efficiency" | 0.266 |
+| **RMSE** | root mean squared error | penalises large misses; **RMSE >> MAE flags a few big errors** rather than uniform mediocrity | 0.298 |
+| **out-of-range** | fraction of predictions outside [0, 1] | a sanity check: the outcome is a proportion, and a linear model is not constrained to produce one | 0.000 |
+
+MAE and RMSE are both reported because the gap between them is
+informative. Here 0.138 vs 0.175 is a moderate ratio -- errors are fairly
+uniform, not driven by a handful of catastrophic misses.
+
+**R2 is the one to distrust here.** It is inflated by the bimodal outcome:
+most of the 0.653 comes from separating the failure clump from the success
+clump, not from precision within either. Within-success R2 is ~0.17-0.22
+and within-failure R2 is about **-14**. MAE 0.138 against a failure clump
+whose entire range is 0.173 makes the same point in interpretable units.
+Inner-loop tuning therefore selects on **MAE**, not R2.
 
 ## Reproducibility
 - Fixed seeds; persist actual fold assignments (line IDs per scheme × repeat × fold) to a file, not just the seed.
@@ -970,20 +1035,38 @@ Nested CV, no pool-correction, mean +/- SD across 10 repeats. Columns are the
 two repeated schemes: `plain` ignores donors, `donor_grouped` never lets a
 donor appear in both train and test.
 
-| task | model | plain 5-fold | donor-grouped 5-fold |
-|---|---|---|---|
-| regression | **ridge** | R2 = 0.6763 +/- 0.0133 | **R2 = 0.6531 +/- 0.0211** |
-| classification | **logistic_l2** | ROC-AUC = 0.9396 +/- 0.0123 | **ROC-AUC = 0.9470 +/- 0.0070** |
+Every metric the harness computes, both repeated schemes, headline and
+secondary models together. See "Metrics" for what each one means.
 
-Headline metrics for the pre-registered models, donor-grouped: ridge
-MAE 0.138 / RMSE 0.175; logistic_l2 PR-AUC 0.968 / balanced accuracy 0.913.
+**Classification**
 
-### Secondary (L1 variants -- NOT the headline; see "Results distillation")
+| model | scheme | ROC-AUC | PR-AUC | balanced acc | sensitivity | specificity | F1 | Brier |
+|---|---|---|---|---|---|---|---|---|
+| **logistic_l2** *(headline)* | plain | 0.940 +/- 0.012 | 0.964 +/- 0.011 | 0.914 +/- 0.013 | 0.931 +/- 0.016 | 0.898 +/- 0.023 | 0.943 +/- 0.009 | 0.102 +/- 0.006 |
+| **logistic_l2** *(headline)* | **donor-grouped** | **0.947 +/- 0.007** | **0.968 +/- 0.004** | **0.913 +/- 0.013** | **0.940 +/- 0.007** | **0.886 +/- 0.022** | **0.945 +/- 0.007** | **0.097 +/- 0.008** |
+| logistic_l1 *(secondary)* | plain | 0.948 +/- 0.011 | 0.968 +/- 0.012 | 0.904 +/- 0.019 | 0.933 +/- 0.005 | 0.874 +/- 0.037 | 0.939 +/- 0.009 | 0.077 +/- 0.007 |
+| logistic_l1 *(secondary)* | donor-grouped | 0.951 +/- 0.008 | 0.970 +/- 0.009 | 0.912 +/- 0.013 | 0.942 +/- 0.011 | 0.883 +/- 0.021 | 0.945 +/- 0.008 | 0.075 +/- 0.004 |
+| *trivial baseline* | -- | *0.500* | *0.696* | *0.500* | *1.000* | *0.000* | *0.821* | *0.212* |
 
-| task | model | plain 5-fold | donor-grouped 5-fold |
-|---|---|---|---|
-| regression | lasso | R2 = 0.6799 +/- 0.0157 | R2 = 0.6685 +/- 0.0150 |
-| classification | logistic_l1 | ROC-AUC = 0.9480 +/- 0.0114 | ROC-AUC = 0.9512 +/- 0.0081 |
+**Regression**
+
+| model | scheme | R2 | MAE | RMSE | out-of-range |
+|---|---|---|---|---|---|
+| **ridge** *(headline)* | plain | 0.676 +/- 0.013 | 0.134 +/- 0.003 | 0.170 +/- 0.003 | 0.050 +/- 0.007 |
+| **ridge** *(headline)* | **donor-grouped** | **0.653 +/- 0.021** | **0.138 +/- 0.004** | **0.175 +/- 0.005** | **0.043 +/- 0.005** |
+| lasso *(secondary)* | plain | 0.680 +/- 0.016 | 0.134 +/- 0.003 | 0.169 +/- 0.004 | 0.049 +/- 0.008 |
+| lasso *(secondary)* | donor-grouped | 0.668 +/- 0.015 | 0.135 +/- 0.003 | 0.172 +/- 0.004 | 0.046 +/- 0.004 |
+| *predict the mean* | -- | *0.000* | *0.266* | *0.298* | *0.000* |
+
+Two things the full table shows that the headline number alone does not:
+
+- **L1 is better calibrated than L2** (Brier 0.075 vs 0.097, a 23% lower
+  squared probability error) even though their AUCs are within one SD.
+  `class_weight="balanced"` pushes L2's probabilities away from the true
+  base rate more than L1's; ranking is unaffected, calibration is not.
+- **4-5% of regression predictions fall outside [0, 1]** -- impossible
+  values for a proportion. A linear model has no constraint keeping it in
+  range, and this is another reason to use the classifier for decisions.
 
 **Donor grouping costs regression a little and classification nothing.**
 Ridge loses 0.023 R2 (0.676 -> 0.653) and lasso 0.011 (0.680 -> 0.669). Both classification models are flat or slightly *better*
