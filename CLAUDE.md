@@ -129,10 +129,13 @@ second independent Codex review already caught a case where a previous
 (`modeling/README.md:474`). An audit protocol you have to remember to invoke is
 one you will skip on exactly the change that needed it.
 
-The skill is tracked at `.claude/skills/continuous-independent-audit/`. That
-copy is canonical; a global one may also exist in `~/.claude/skills/`. Edit the
-repo copy, and if you touch the global one, sync it back here in the same
-change -- two homes drifting apart is the failure this project keeps repeating.
+The skill itself lives globally at
+`~/.claude/skills/continuous-independent-audit/`, which is its own git
+repository. It is general -- nothing in it is specific to this project -- so it
+is deliberately not vendored here; only the overrides below are. Keep exactly
+one copy: if you find the skill duplicated into this repo, delete the copy
+rather than syncing it. Two homes drifting apart is a failure this project has
+already repeated.
 
 Repo-specific settings, which override the skill's own defaults:
 
