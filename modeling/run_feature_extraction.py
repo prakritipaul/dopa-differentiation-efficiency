@@ -52,6 +52,7 @@ from pathlib import Path
 import pandas as pd
 
 from modeling.features import (
+    TIMEPOINT_FILES,
     compute_pca_features_for_fold,
     compute_proportion_features,
     load_cell_metadata,
@@ -74,6 +75,7 @@ SEED = 0
 
 
 def main(
+    timepoint: str = "D11",
     n_splits: int = N_SPLITS,
     n_repeats: int = N_REPEATS,
     out_suffix: str = "",
@@ -81,7 +83,16 @@ def main(
     restrict_fit_to_qualifying: bool = False,
     resume: bool = True,
 ) -> None:
-    """restrict_fit_to_qualifying: when True, the HVG/PCA fit is limited to
+    """timepoint: "D11" or "D30" -- selects the h5 file, the cell-type
+    annotation set (D11 has 3 types, D30 has 7), and the depth-outlier pool
+    excluded from the HVG/PCA fit (features.DEPTH_OUTLIER_POOLS: pool11 at
+    D11, pool5 at D30). It also names the output, so the two timepoints
+    cannot overwrite each other. Fold assignments are NOT timepoint-specific
+    -- they depend only on the 138 lines' donor/label metadata, so both
+    timepoints get byte-identical folds and the D11-vs-D30 comparison is
+    paired on the same held-out donors in every repeat.
+
+    restrict_fit_to_qualifying: when True, the HVG/PCA fit is limited to
     cells in the qualifying (cell_line, pool) combos -- the study
     population the features are actually computed on. When False (the
     default, preserving the original run) cells outside those combos also
@@ -103,28 +114,72 @@ def main(
         folds["loco"] = leave_one_line_out(lines)
         folds["lodo"] = leave_one_donor_out(lines)
 
-    persist_folds(folds, OUT_DIR / f"fold_data/fold_assignments{out_suffix}.csv")
+    # Fold assignments are shared across timepoints ON PURPOSE -- see the
+    # docstring. Writing to the same un-suffixed path and refusing to change
+    # it is what makes "D11 and D30 are evaluated on the same held-out
+    # donors" a checked fact rather than an assumption: if anything ever
+    # perturbs fold construction, the D30 run fails here instead of quietly
+    # producing an unpaired comparison that still looks plausible.
+    folds_path = OUT_DIR / f"fold_data/fold_assignments{out_suffix}.csv"
+    if folds_path.exists():
+        # Compare via a scratch file and NEVER overwrite the committed one:
+        # the existing assignments are provenance for results already
+        # published from them, so a mismatch must fail loudly with the
+        # original still intact, not after it has been clobbered.
+        scratch = folds_path.with_suffix(".regenerated.tmp.csv")
+        persist_folds(folds, scratch)
+        same = pd.read_csv(scratch).equals(pd.read_csv(folds_path))
+        scratch.unlink()
+        if not same:
+            raise ValueError(
+                f"regenerating folds for timepoint={timepoint} does not reproduce "
+                f"{folds_path}. Fold assignments must be identical across "
+                "timepoints for the D11-vs-D30 comparison to be paired. The "
+                "existing file was left untouched; investigate before rerunning."
+            )
+        print(f"fold assignments reproduce {folds_path.name} exactly (paired with D11)")
+    else:
+        persist_folds(folds, folds_path)
     total_folds = sum(len(fs) for fs in folds.values())
     print(f"{total_folds} folds to process ({', '.join(f'{k}={len(v)}' for k, v in folds.items())})")
 
-    meta = load_cell_metadata("D11")
+    meta = load_cell_metadata(timepoint)
     qualifying = pd.read_csv(QUALIFYING_COMBOS_CSV)[["cell_line", "pool"]]
     meta_q = meta.merge(qualifying, on=["cell_line", "pool"], how="inner")
 
     # Proportions: no per-fold refit needed (pre-existing labels, no fitting step).
     props = compute_proportion_features(meta_q)
 
-    out_path = OUT_DIR / f"fold_data/fold_features_D11{out_suffix}.csv"
+    out_path = OUT_DIR / f"fold_data/fold_features_{timepoint}{out_suffix}.csv"
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Each fold's rows are appended as soon as they are computed, so a crash
     # at fold 250 of 258 costs one fold rather than the whole multi-hour run.
     # On restart, folds already present in the file are skipped.
+    # Which cells were allowed to shape the HVG/PCA basis. Recorded on every
+    # row so a resume cannot silently splice together folds computed under two
+    # different fitting populations: the rows would look identical in schema
+    # and the resulting table would be a plausible, non-crashing, wrong
+    # feature basis -- the exact failure run_experiment.run_all already guards
+    # against for its own inputs.
+    fit_population = "qualifying_only" if restrict_fit_to_qualifying else "all_cells"
+
     done_keys: set[tuple] = set()
     if resume and out_path.exists():
-        prev = pd.read_csv(out_path, usecols=["scheme", "repeat", "fold"]).drop_duplicates()
-        done_keys = {(s, int(r), int(fo)) for s, r, fo in prev.itertuples(index=False)}
-        print(f"resuming: {len(done_keys)} of {total_folds} folds already in {out_path.name}")
+        prev = pd.read_csv(out_path)
+        seen = set(prev.get("fit_population", pd.Series(dtype=object)).dropna().unique())
+        if seen and seen != {fit_population}:
+            raise ValueError(
+                f"{out_path} holds rows fit on {sorted(seen)} but this run fits on "
+                f"{fit_population!r}. Resuming would mix two feature bases in one table. "
+                f"Rerun with --no-resume, or use a different --suffix."
+            )
+        done_keys = {
+            (s, int(r), int(fo))
+            for s, r, fo in prev[["scheme", "repeat", "fold"]].drop_duplicates().itertuples(index=False)
+        }
+        print(f"resuming: {len(done_keys)} of {total_folds} folds already in {out_path.name} "
+              f"(fit population {fit_population})")
     elif not resume and out_path.exists():
         out_path.unlink()
 
@@ -141,7 +196,7 @@ def main(
             t0 = time.time()
             held_out = set(f.test_lines)
             pcs = compute_pca_features_for_fold(
-                "D11", held_out, meta=meta, n_pcs=N_PCS,
+                timepoint, held_out, meta=meta, n_pcs=N_PCS,
                 restrict_to_combos=qualifying if restrict_fit_to_qualifying else None,
             )
             pcs_q = pcs.merge(qualifying, on=["cell_line", "pool"], how="inner")
@@ -154,6 +209,7 @@ def main(
             combo["repeat"] = f.repeat
             combo["fold"] = f.fold
             combo["split"] = combo["cell_line"].apply(lambda c: "test" if c in held_out else "train")
+            combo["fit_population"] = fit_population
 
             # Append immediately; header only when creating the file. Column
             # order is fixed by the first write, so reindex every later chunk
@@ -181,4 +237,22 @@ def main(
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--timepoint", default="D11", choices=sorted(TIMEPOINT_FILES))
+    parser.add_argument("--suffix", default="", help="suffix for the output table")
+    parser.add_argument(
+        "--restrict-fit-to-qualifying", action="store_true",
+        help="fit HVGs/PCA only on cells in the qualifying (cell_line, pool) combos -- the study "
+             "population itself. Without it, cells from lines outside the 138 also shape the basis. "
+             "Changing this changes the features, so pair it with a distinct --suffix (_qualonly).",
+    )
+    parser.add_argument("--no-resume", action="store_true", help="discard existing output and recompute")
+    args = parser.parse_args()
+    main(
+        timepoint=args.timepoint,
+        out_suffix=args.suffix,
+        restrict_fit_to_qualifying=args.restrict_fit_to_qualifying,
+        resume=not args.no_resume,
+    )

@@ -61,6 +61,45 @@ from modeling.models import PC_COUNT_GRID, ModelSpec, models_for_task
 ALL_PROPORTION_COLS = ["phat_FPP", "phat_NB", "phat_P_FPP"]
 MODEL_PROPORTION_COLS = ["phat_FPP", "phat_NB"]
 ALL_PC_COLS = [f"PC{i}" for i in range(1, 11)]
+
+# The two constants above are the D11 cell-type set. D30 has SEVEN annotated
+# types (DA, Epen1, FPP, P_FPP, Sert, U_Neur1, U_Neur2), so the column list
+# cannot be a module constant any more -- it is read off the feature table via
+# proportion_cols() below. The constants stay because feature_importance.py is
+# D11-only by construction (it reads the D11 EDA CSVs directly) and imports
+# them; for a D11 frame proportion_cols() returns exactly these two lists, so
+# the D11 pipeline is unchanged.
+#
+# phat_P_FPP is the reference category at BOTH timepoints: it is the one the
+# D11 model already drops, and it is also the weakest-correlated D30 type
+# (Spearman -0.133 vs the outcome), so keeping it as the reference leaves the
+# D11 results bit-identical and does not privilege any informative D30 type.
+REFERENCE_PROPORTION = "phat_P_FPP"
+
+
+def proportion_cols(frame: pd.DataFrame) -> tuple[list[str], list[str]]:
+    """(all, model) proportion columns actually present in `frame`.
+
+    `all` is every phat_* column, sorted, and is what gets carried through
+    averaging/pool-correction/reporting. `model` drops REFERENCE_PROPORTION
+    and is the only set allowed into a simultaneous fit: the proportions sum
+    to exactly 1.0 per row, so including all of them alongside an intercept
+    makes the design matrix rank-deficient.
+
+    Derived from the frame rather than configured per timepoint so that a
+    variant feature table (e.g. D30 with phat_DA/phat_Sert dropped) needs no
+    flag threaded down here to be scored correctly -- dropping the columns
+    upstream is sufficient and cannot desynchronise."""
+    all_cols = sorted(c for c in frame.columns if c.startswith("phat_"))
+    if not all_cols:
+        raise ValueError("feature table has no phat_* proportion columns")
+    if REFERENCE_PROPORTION not in all_cols:
+        raise ValueError(
+            f"reference category {REFERENCE_PROPORTION} missing from {all_cols}; "
+            "without it the retained proportions are not a reduced composition "
+            "and the fit is rank-deficient"
+        )
+    return all_cols, [c for c in all_cols if c != REFERENCE_PROPORTION]
 DECISION_THRESHOLD = 0.5  # probability -> class-call threshold; kept separate from the 0.2 outcome threshold
 
 
@@ -74,14 +113,15 @@ def _param_grid_combos(param_grid: dict) -> list[dict]:
 
 
 def build_feature_matrix(line_level: pd.DataFrame, k: int) -> np.ndarray:
-    """2 proportions + first k PCs (k=0..10). PCA components are
-    hierarchical, so this truncates columns from one PCA fit rather than
+    """(n_celltypes - 1) proportions + first k PCs (k=0..10). PCA components
+    are hierarchical, so this truncates columns from one PCA fit rather than
     needing a distinct fit per k.
 
-    Only MODEL_PROPORTION_COLS enters the matrix -- phat_P_FPP is the
-    implicit reference category (1 - FPP - NB). Including all three made
-    the design matrix rank-deficient once an intercept was present."""
-    cols = MODEL_PROPORTION_COLS + ALL_PC_COLS[:k]
+    Only the reduced proportion set enters the matrix -- phat_P_FPP is the
+    implicit reference category. Including every proportion made the design
+    matrix rank-deficient once an intercept was present. That is 2 columns at
+    D11 (3 types) and 6 at D30 (7 types)."""
+    cols = proportion_cols(line_level)[1] + ALL_PC_COLS[:k]
     return line_level[cols].to_numpy()
 
 
@@ -114,10 +154,10 @@ def build_line_level_for_fold(
     sub = fold_features[
         (fold_features["scheme"] == scheme) & (fold_features["repeat"] == repeat) & (fold_features["fold"] == fold)
     ].copy()
-    # All three proportions are carried through averaging/correction (they
-    # are data, and downstream reporting uses phat_P_FPP); only
-    # MODEL_PROPORTION_COLS reaches a fit, via build_feature_matrix.
-    value_cols = ALL_PROPORTION_COLS + ALL_PC_COLS
+    # EVERY proportion is carried through averaging/correction (they are data,
+    # and downstream reporting uses the reference category too); only the
+    # reduced set reaches a fit, via build_feature_matrix.
+    value_cols = proportion_cols(sub)[0] + ALL_PC_COLS
 
     if pool_correction:
         train_mask = (sub["split"] == "train").to_numpy()

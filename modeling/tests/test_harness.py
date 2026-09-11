@@ -60,6 +60,43 @@ def test_build_feature_matrix_identity_and_order():
         np.testing.assert_array_equal(harness.build_feature_matrix(frame, k), frame[expected_cols].to_numpy())
 
 
+def test_proportion_cols_reproduces_the_pre_refactor_d11_constants():
+    # Oracle: the literal lists that were hardcoded in harness.py before the
+    # columns became data-derived for D30. If the derivation ever stops
+    # agreeing with them, every published D11 number silently changes basis.
+    old_all = ["phat_FPP", "phat_NB", "phat_P_FPP"]
+    old_model = ["phat_FPP", "phat_NB"]
+    d11 = pd.DataFrame({c: [0.3, 0.4] for c in old_all})
+    assert harness.proportion_cols(d11) == (old_all, old_model)
+
+
+def test_proportion_cols_handles_the_seven_type_d30_composition():
+    d30_types = ["DA", "Epen1", "FPP", "P_FPP", "Sert", "U_Neur1", "U_Neur2"]
+    frame = pd.DataFrame({f"phat_{t}": [1 / 7, 1 / 7] for t in d30_types})
+    all_cols, model_cols = harness.proportion_cols(frame)
+    assert all_cols == sorted(all_cols), "column order must be deterministic across runs"
+    assert len(all_cols) == 7 and len(model_cols) == 6
+    assert harness.REFERENCE_PROPORTION not in model_cols
+    # Six free coordinates + intercept must be full rank on a real composition.
+    rng = np.random.default_rng(0)
+    raw = rng.random((20, 7))
+    comp = pd.DataFrame(raw / raw.sum(axis=1, keepdims=True), columns=[f"phat_{t}" for t in d30_types])
+    assert comp.sum(axis=1).round(12).eq(1.0).all(), "fixture must be compositional"
+    X = harness.build_feature_matrix(comp, 0)
+    assert X.shape[1] == 6
+    assert np.linalg.matrix_rank(np.column_stack([np.ones(len(X)), X])) == 7
+
+
+def test_proportion_cols_rejects_a_table_missing_the_reference_category():
+    # Dropping the reference leaves a set that no longer sums to a known
+    # constant; fitting it silently would be rank-deficient-adjacent and wrong.
+    frame = pd.DataFrame({"phat_DA": [0.5], "phat_Sert": [0.5]})
+    with pytest.raises(ValueError, match="reference category"):
+        harness.proportion_cols(frame)
+    with pytest.raises(ValueError, match="no phat_"):
+        harness.proportion_cols(pd.DataFrame({"PC1": [1.0]}))
+
+
 def test_build_feature_matrix_omits_one_implicit_compositional_coordinate():
     # The retained coordinates must vary INDEPENDENTLY, not just sum to 1. If
     # phat_P_FPP were held constant, phat_FPP + phat_NB would also be constant
