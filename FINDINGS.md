@@ -25,21 +25,27 @@ donor appear in test.
 
 | model | scheme | ROC-AUC | PR-AUC | balanced acc | sensitivity | specificity | F1 | Brier |
 |---|---|---|---|---|---|---|---|---|
-| **logistic_l2** *(headline)* | plain | 0.940 ± 0.012 | 0.964 ± 0.011 | 0.914 ± 0.013 | 0.931 ± 0.016 | 0.898 ± 0.023 | 0.943 ± 0.009 | 0.102 ± 0.006 |
-| **logistic_l2** *(headline)* | **donor-grouped** | **0.947 ± 0.007** | **0.968 ± 0.004** | **0.913 ± 0.013** | **0.940 ± 0.007** | **0.886 ± 0.022** | **0.945 ± 0.007** | **0.097 ± 0.008** |
+| **logistic_l2** *(headline)* | plain | **0.940 ± 0.012** | **0.964 ± 0.011** | **0.914 ± 0.013** ★ | **0.931 ± 0.016** | **0.898 ± 0.023** ★ | **0.943 ± 0.009** | **0.102 ± 0.006** |
+| **logistic_l2** *(headline)* | **donor-grouped** | **0.947 ± 0.007** | **0.968 ± 0.004** | **0.913 ± 0.013** | **0.940 ± 0.007** | **0.886 ± 0.022** | **0.945 ± 0.007** ★ | **0.097 ± 0.008** |
 | logistic_l1 *(secondary)* | plain | 0.948 ± 0.011 | 0.968 ± 0.012 | 0.904 ± 0.019 | 0.933 ± 0.005 | 0.874 ± 0.037 | 0.939 ± 0.009 | 0.077 ± 0.007 |
-| logistic_l1 *(secondary)* | donor-grouped | 0.951 ± 0.008 | 0.970 ± 0.009 | 0.912 ± 0.013 | 0.942 ± 0.011 | 0.883 ± 0.021 | 0.945 ± 0.008 | 0.075 ± 0.004 |
+| logistic_l1 *(secondary)* | donor-grouped | 0.951 ± 0.008 ★ | 0.970 ± 0.009 ★ | 0.912 ± 0.013 | 0.942 ± 0.011 ★ | 0.883 ± 0.021 | 0.945 ± 0.008 ★ | 0.075 ± 0.004 ★ |
 | *trivial baseline* | — | *0.500* | *0.696* | *0.500* | *1.000* | *0.000* | *0.821* | *0.212* |
 
 **Regression**
 
 | model | scheme | R² | MAE | RMSE | out-of-range |
 |---|---|---|---|---|---|
-| **ridge** *(headline)* | plain | 0.676 ± 0.013 | 0.134 ± 0.003 | 0.170 ± 0.003 | 0.050 ± 0.007 |
-| **ridge** *(headline)* | **donor-grouped** | **0.653 ± 0.021** | **0.138 ± 0.004** | **0.175 ± 0.005** | **0.043 ± 0.005** |
-| lasso *(secondary)* | plain | 0.680 ± 0.016 | 0.134 ± 0.003 | 0.169 ± 0.004 | 0.049 ± 0.008 |
+| **ridge** *(headline)* | plain | **0.676 ± 0.013** | **0.134 ± 0.003** ★ | **0.170 ± 0.003** | **0.050 ± 0.007** |
+| **ridge** *(headline)* | **donor-grouped** | **0.653 ± 0.021** | **0.138 ± 0.004** | **0.175 ± 0.005** | **0.043 ± 0.005** ★ |
+| lasso *(secondary)* | plain | 0.680 ± 0.016 ★ | 0.134 ± 0.003 ★ | 0.169 ± 0.004 ★ | 0.049 ± 0.008 |
 | lasso *(secondary)* | donor-grouped | 0.668 ± 0.015 | 0.135 ± 0.003 | 0.172 ± 0.004 | 0.046 ± 0.004 |
 | *predict the mean* | — | *0.000* | *0.266* | *0.298* | *0.000* |
+
+★ = best in that column among the four fitted rows (baselines excluded).
+**Bold** marks the pre-registered headline row, which is a separate thing
+from being best. Higher is better everywhere except **Brier, MAE, RMSE and
+out-of-range**, where lower is better — so the star follows the minimum in
+those columns.
 
 Baseline row = what a trivial model scores: always predicting "success"
 for classification (or random ranking, for the two AUCs), and predicting
