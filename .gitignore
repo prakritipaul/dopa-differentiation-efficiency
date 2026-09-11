@@ -1,3 +1,6 @@
 __pycache__/
 *.pyc
 .venv/
+build/combined.html
+build/combined.md
+build/toc.html
