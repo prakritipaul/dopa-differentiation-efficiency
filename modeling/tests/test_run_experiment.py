@@ -111,3 +111,57 @@ def test_run_all_does_not_write_into_the_package_directory(patched_run_all, tmp_
     assert after == before, f"run_all touched committed files in {package_dir}: {set(after) ^ set(before) or 'mtime changed'}"
     assert (tmp_path / "results" / "nested_selections_regression.csv").exists(), \
         "selections should be written under the injected dir"
+
+
+def _counting_flat(monkeypatch, calls):
+    original = run_experiment.run_flat_cv
+
+    def wrapper(ff, lines, scheme, task, correction):
+        calls.append(scheme)
+        return original(ff, lines, scheme, task, correction)
+
+    monkeypatch.setattr(run_experiment, "run_flat_cv", wrapper)
+
+
+def test_resume_skips_finished_schemes_but_still_returns_the_full_grid(
+    patched_run_all, monkeypatch, tmp_path
+):
+    """A resumed run must recompute nothing and still return every scheme.
+
+    Returning only this run's rows would silently shrink the grid, which is
+    the failure mode that matters: a truncated results table looks exactly
+    like a valid one.
+    """
+    first = run_experiment.run_all("regression", patched_run_all)
+
+    calls: list[str] = []
+    _counting_flat(monkeypatch, calls)
+    second = run_experiment.run_all("regression", patched_run_all)
+
+    assert calls == [], f"resume recomputed {calls}"
+    assert len(second) == len(first)
+    assert set(second["scheme"]) == set(run_experiment.SCHEMES)
+
+    # Selections are appended per scheme; writing them once at the end would
+    # drop every scheme restored from disk rather than recomputed.
+    sel = pd.read_csv(tmp_path / "results" / "nested_selections_regression.csv")
+    assert set(sel["scheme"]) == set(run_experiment.SCHEMES)
+
+    run_experiment.run_all("regression", patched_run_all, resume=False)
+    assert set(calls) == set(run_experiment.SCHEMES), "resume=False must recompute everything"
+
+
+def test_resume_refuses_to_mix_feature_bases(patched_run_all, tmp_path):
+    """Resuming against a different fold-features file must fail loudly.
+
+    Mixing two bases in one table is the defect recorded in
+    modeling/README.md "Second correctness review"; it produced plausible,
+    non-crashing output that went unnoticed.
+    """
+    run_experiment.run_all("regression", patched_run_all)
+
+    other_basis = tmp_path / "fold_features_qualonly.csv"
+    pd.DataFrame({"scheme": ["placeholder"]}).to_csv(other_basis, index=False)
+
+    with pytest.raises(ValueError, match="mix feature bases"):
+        run_experiment.run_all("regression", other_basis)

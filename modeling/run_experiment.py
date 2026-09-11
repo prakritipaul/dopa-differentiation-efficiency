@@ -74,29 +74,90 @@ def summarize_nested_selections(nested_preds: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+# One (scheme, correction) pair is the resume unit. LOCO is 138 folds and
+# LODO 20, so a scheme is both the natural checkpoint boundary and the
+# expensive thing to lose. No ETA is printed: the four schemes differ in cost
+# by more than an order of magnitude, so a rate averaged over them would be
+# actively misleading.
+RESUME_KEY = ["scheme", "pool_correction", "tuning"]
+# Suffixing happens at the path, not by renaming afterwards: the rename
+# approach overwrote the committed baseline before moving it aside, which
+# deleted the baseline selections from the repo.
+SEL_COLS = ["scheme", "pool_correction", "model", "repeat", "fold", "selected_k", "selected_param"]
+
+
+def _append(path: Path, chunk: pd.DataFrame) -> None:
+    """Append `chunk`, reindexed to the header already on disk. The first
+    write fixes column order and every later chunk must match it -- flat and
+    nested summaries do not carry identical columns, so relying on chunk
+    ordering would silently misalign values under the wrong headers."""
+    if path.exists():
+        chunk = chunk.reindex(columns=pd.read_csv(path, nrows=0).columns.tolist())
+        chunk.to_csv(path, mode="a", header=False, index=False)
+    else:
+        chunk.to_csv(path, index=False)
+
+
 def run_all(
     task: str,
     fold_features_csv: Path = FOLD_FEATURES_CSV,
     out_suffix: str = "",
     out_dir: Path | None = None,
+    resume: bool = True,
 ) -> pd.DataFrame:
-    """out_dir: where nested_selections_{task}{suffix}.csv is written.
-    Defaults to the package directory. Injectable because run_all has a
-    side effect on disk, and the test suite was silently overwriting the
-    committed modeling/nested_selections_regression.csv with synthetic
-    fixture data on every run -- which is how corrupt content ended up
-    committed."""
+    """out_dir: where results_{task}{suffix}.csv and
+    nested_selections_{task}{suffix}.csv are written. Defaults to the package
+    directory. Injectable because run_all has a side effect on disk, and the
+    test suite was silently overwriting the committed
+    modeling/nested_selections_regression.csv with synthetic fixture data on
+    every run -- which is how corrupt content ended up committed.
+
+    resume: each (scheme, correction) pair's summary rows are appended as soon
+    as that scheme finishes, so an interrupted run restarts from what is
+    already on disk instead of recomputing LOCO's 138 folds. Pass resume=False
+    to discard existing output and recompute from scratch.
+
+    Resume trusts what is on disk. Every row records the fold-features file it
+    came from, and resuming against a different basis is refused rather than
+    silently mixing two provenances -- that exact failure produced the
+    mixed-basis importance tables in modeling/README.md "Second correctness
+    review". A change that does NOT alter the basis filename -- different
+    hyperparameters, a fix inside harness.py, regenerated features at the same
+    path -- is undetectable here. Use resume=False after any of those."""
     fold_features = pd.read_csv(fold_features_csv)
     lines = load_lines_with_label()
 
-    summaries = []
-    all_selections: list[pd.DataFrame] = []
+    base_dir = out_dir or OUT_DIR
+    res_path = base_dir / f"results/results_{task}{out_suffix}.csv"
+    sel_path = base_dir / f"results/nested_selections_{task}{out_suffix}.csv"
+    res_path.parent.mkdir(parents=True, exist_ok=True)
+    basis = Path(fold_features_csv).name
+
+    done: set[tuple] = set()
+    if res_path.exists():
+        if resume:
+            prev = pd.read_csv(res_path)
+            seen = set(prev.get("fold_features", pd.Series(dtype=object)).dropna().unique())
+            if seen and seen != {basis}:
+                raise ValueError(
+                    f"{res_path} holds rows from {sorted(seen)} but this run uses "
+                    f"{basis}. Resuming would mix feature bases in one table. "
+                    f"Rerun with resume=False, or point out_suffix at a new file."
+                )
+            done = set(map(tuple, prev[RESUME_KEY].drop_duplicates().itertuples(index=False)))
+            print(f"resuming from {res_path}: {len(done)} summary groups on disk", flush=True)
+        else:
+            res_path.unlink()
+            sel_path.unlink(missing_ok=True)
+
     for scheme in SCHEMES:
         for correction in CORRECTIONS:
+            if {(scheme, correction, "flat"), (scheme, correction, "nested")} <= done:
+                print(f"skip {scheme} (correction={correction}): already on disk", flush=True)
+                continue
             flat_preds = run_flat_cv(fold_features, lines, scheme, task, correction)
             flat_summary = summarize_across_repeats(flat_preds, task, ["model", "k", "param_str"])
             flat_summary["scheme"], flat_summary["pool_correction"], flat_summary["tuning"] = scheme, correction, "flat"
-            summaries.append(flat_summary)
 
             nested_preds = run_nested_cv(fold_features, lines, scheme, task, correction)
             # Metrics MUST stay grouped on ["model"] alone: within one repeat
@@ -115,23 +176,27 @@ def run_all(
             nested_summary = nested_summary.merge(
                 summarize_nested_selections(nested_preds), on="model", how="left"
             )
-            all_selections.append(nested_preds.assign(scheme=scheme, pool_correction=correction))
             nested_summary["scheme"], nested_summary["pool_correction"], nested_summary["tuning"] = scheme, correction, "nested"
-            summaries.append(nested_summary)
 
-    # Per-outer-fold selections persisted in full, not just the modal summary,
-    # so the whole selection record survives rather than being reduced away.
-    if all_selections:
-        selections = pd.concat(all_selections, ignore_index=True)
-        cols = ["scheme", "pool_correction", "model", "repeat", "fold", "selected_k", "selected_param"]
-        # Suffixed HERE rather than written unsuffixed and renamed afterwards:
-        # the rename approach overwrote the committed baseline file before
-        # moving it aside, which deleted the baseline selections from the repo.
-        sel_path = (out_dir or OUT_DIR) / f"results/nested_selections_{task}{out_suffix}.csv"
-        sel_path.parent.mkdir(parents=True, exist_ok=True)
-        selections[cols].drop_duplicates().to_csv(sel_path, index=False)
+            # Appended the moment the scheme finishes -- that is the whole
+            # point of resume. Per-outer-fold selections are persisted in full,
+            # not just the modal summary, and are appended per scheme for the
+            # same reason: writing them once at the end would silently drop
+            # every scheme that was restored from disk rather than recomputed.
+            chunk = pd.concat([flat_summary, nested_summary], ignore_index=True)
+            chunk["fold_features"] = basis
+            _append(res_path, chunk)
+            _append(
+                sel_path,
+                nested_preds.assign(scheme=scheme, pool_correction=correction)[SEL_COLS].drop_duplicates(),
+            )
+            print(f"wrote {scheme} (correction={correction})", flush=True)
 
-    return pd.concat(summaries, ignore_index=True)
+    if not res_path.exists():
+        return pd.DataFrame()
+    # Read back rather than returning this run's rows: on a resumed run the
+    # in-memory summaries hold only the schemes recomputed this time.
+    return pd.read_csv(res_path)
 
 
 def select_headline(results: pd.DataFrame, task: str | None = None) -> pd.DataFrame:
