@@ -81,3 +81,35 @@ a checklist is most needed is the moment it is least likely to be reached
 for. CLAUDE.md loads every session automatically. There is also no todo tool
 in this project, so a skill would have nothing to call -- it would emit the
 same markdown either way. Don't re-open this unless a todo tool appears.
+
+## Ponytail overrides for this repo
+
+The `ponytail` skill (lazy/minimal coding mode) earns its keep here — keep the
+ladder, the root-cause rule ("grep every caller before you edit"), and
+`ponytail:` markers for deliberate shortcuts. These five carve-outs override
+the skill where its defaults fight this repo.
+
+1. **Tests go in `modeling/tests/`, never `__main__` self-checks.** The skill's
+   "assert-based `demo()`, no frameworks" minimum hand-rolls a worse pytest,
+   which is already here — reusing it is rung 2 of ponytail's own ladder.
+   Related: `-m "not slow"` hides the slow tier, so run the suite in full
+   before declaring results final (`modeling/tests/test_features.py:60-65`
+   documents a test that failed unnoticed for exactly this reason).
+2. **Methods rationale is the deliverable, not prose debt.** "At most three
+   short lines / delete the explanation" applies to defending a *code*
+   simplification. Why a statistical choice was made belongs in `FINDINGS.md`
+   and `modeling/README.md` at whatever length it takes.
+3. **Never delete provenance to shorten a diff.** `archive/`, suffixed variant
+   outputs (`_qualonly`), saved fold assignments and seeds are not speculative
+   flexibility. Mutating an analysis script in place is the shortest diff and
+   silently invalidates every result already published from it.
+4. **Timepoint parameterization is not YAGNI.** D30 is the second
+   implementation, so parameterizing beats forking `*_d11_*` into `*_d30_*`.
+   "No config for a value that never changes" does not apply to a value that
+   is about to change.
+5. **Ponytail does not cover statistical correctness.** `ponytail-review` and
+   `ponytail-audit` scope out correctness by design, and neither names the
+   defects that matter here (fold leakage, PCA basis fit on held-out lines,
+   label contamination across pools). Those stay with
+   `continuous-independent-audit` / `codex:rescue` — an audit pass is not
+   correctness coverage.
