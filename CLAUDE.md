@@ -113,3 +113,36 @@ the skill where its defaults fight this repo.
    label contamination across pools). Those stay with
    `continuous-independent-audit` / `codex:rescue` — an audit pass is not
    correctness coverage.
+
+## Continuous independent audit: on by default
+
+Invoke the `continuous-independent-audit` skill **automatically at the start of
+any session that will change `modeling/`** — without being asked. Say in one
+line that you have done so. This is distinct from the Codex second-opinion rule
+above: that one reviews a *decision* before implementing, this one audits *code*
+after writing it.
+
+Why on by default: the defects this repo produces are silent. They do not raise
+— they emit a plausible, non-crashing, wrong number into a results table. A
+second independent Codex review already caught a case where a previous
+`modeling/README.md` entry overstated what had been fixed
+(`modeling/README.md:474`). An audit protocol you have to remember to invoke is
+one you will skip on exactly the change that needed it.
+
+Repo-specific settings, which override the skill's own defaults:
+
+- **Ledger:** `modeling/docs/audit_ledger.md`, not `audit/ledger.md`. It holds
+  the **status table only**. Narrative findings stay in `modeling/README.md`;
+  ledger rows link to them. Two homes for findings is how "overstated what had
+  been fixed" happens again.
+- **Cadence:** per milestone, not per change — a CV run is 40+ minutes. The
+  three gates are: feature extraction correct → harness/CV correct → results
+  table correct.
+- **Handoff:** the contract given to Codex must state the *statistical*
+  invariants, not just signatures. They are listed in `AGENTS.md` under "Your
+  role as independent auditor" — keep that list and this rule in sync.
+- **Isolation:** `EnterWorktree`. **Codex:** the `codex:rescue` skill. If
+  either is unavailable, the audit is 🚧 blocked — your own checks do not
+  substitute.
+- **Slow tier:** `-m "not slow"` is the everyday command, so no module reaches
+  ✅ on its evidence alone. Run the full suite before a completion gate.
