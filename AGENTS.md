@@ -23,7 +23,10 @@ cross-validation. Work on a D30 -> D52 model is starting.
 Dependency management is [uv](https://docs.astral.sh/uv/); Python is pinned to
 3.11 via `.python-version`.
 
-- Tests: `uv run pytest modeling/ -m "not slow"` (51 fast tests)
+- Tests: `uv run pytest modeling/ -m "not slow"` — 52 tests: 51 pass, 1 is a
+  strict `xfail` encoding a known defect (unseen test pools map to NaN during
+  pool correction, `modeling/tests/test_harness.py:127`). Strict means it
+  fails the suite if it ever starts passing, so do not "fix" it silently.
 - Full suite including the ~3 min integration test: `uv run pytest modeling/`
 - Run any module: `uv run python -m modeling.run_regression`
 - Add a dependency: `uv add <package>`
