@@ -74,6 +74,33 @@ N_PCS = 10
 SEED = 0
 
 
+def append_fold_rows(out_path: Path, chunk: pd.DataFrame) -> None:
+    """Append one fold's rows, creating the file on first write.
+
+    Column ORDER is fixed by the first write, so later chunks are reindexed to
+    the header already on disk rather than trusting dict ordering to stay
+    stable. But reindexing must never change the column SET in either
+    direction: selecting the header's columns alone silently drops any field
+    the header predates, which is how appending to a legacy table strips
+    `fit_population` off the new rows and leaves a file carrying no provenance
+    at all, with no error raised anywhere. A schema difference is a bug in the
+    caller, not something to paper over mid-run."""
+    if not out_path.exists():
+        chunk.to_csv(out_path, index=False)
+        return
+
+    header_cols = pd.read_csv(out_path, nrows=0).columns.tolist()
+    extra = [c for c in chunk.columns if c not in header_cols]
+    absent = [c for c in header_cols if c not in chunk.columns]
+    if extra or absent:
+        raise ValueError(
+            f"{out_path} has a different schema than the rows being appended "
+            f"(only in new rows: {extra}; only in file: {absent}). Appending would "
+            f"silently drop or blank columns. Rerun with --no-resume to rebuild."
+        )
+    chunk[header_cols].to_csv(out_path, mode="a", header=False, index=False)
+
+
 def main(
     timepoint: str = "D11",
     n_splits: int = N_SPLITS,
@@ -168,11 +195,18 @@ def main(
     if resume and out_path.exists():
         prev = pd.read_csv(out_path)
         seen = set(prev.get("fit_population", pd.Series(dtype=object)).dropna().unique())
-        if seen and seen != {fit_population}:
+        # An EMPTY `seen` is not "compatible", it is "provenance unknown", and
+        # those must not be conflated: a table predating this column could have
+        # been fit on either population, so resuming onto it would produce
+        # exactly the mixed basis this check exists to prevent. Legacy tables
+        # (the committed D11 ones) are complete and never need resuming, so
+        # refusing is the safe reading -- rerun with --no-resume to rebuild.
+        if seen != {fit_population}:
             raise ValueError(
-                f"{out_path} holds rows fit on {sorted(seen)} but this run fits on "
-                f"{fit_population!r}. Resuming would mix two feature bases in one table. "
-                f"Rerun with --no-resume, or use a different --suffix."
+                f"{out_path} records fit_population="
+                f"{sorted(seen) if seen else 'UNRECORDED (no fit_population column)'} "
+                f"but this run fits on {fit_population!r}. Resuming would mix two feature "
+                f"bases in one table. Rerun with --no-resume, or use a different --suffix."
             )
         done_keys = {
             (s, int(r), int(fo))
@@ -214,12 +248,7 @@ def main(
             # Append immediately; header only when creating the file. Column
             # order is fixed by the first write, so reindex every later chunk
             # to it rather than trusting dict ordering to stay stable.
-            if out_path.exists():
-                header_cols = pd.read_csv(out_path, nrows=0).columns.tolist()
-                combo = combo[header_cols]
-                combo.to_csv(out_path, mode="a", header=False, index=False)
-            else:
-                combo.to_csv(out_path, index=False)
+            append_fold_rows(out_path, combo)
             rows_written += len(combo)
             computed += 1
 
