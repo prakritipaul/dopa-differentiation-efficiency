@@ -46,7 +46,9 @@ pipeline per modeling/pool_correction_investigation.md, but still
 supported).
 """
 
+import os
 import time
+from io import StringIO
 from pathlib import Path
 
 import pandas as pd
@@ -58,7 +60,9 @@ from modeling.features import (
     load_cell_metadata,
 )
 from modeling.folds import (
+    VARIANTS,
     donor_grouped_repeated_kfold,
+    get_variant,
     leave_one_donor_out,
     leave_one_line_out,
     load_lines_with_label,
@@ -66,8 +70,12 @@ from modeling.folds import (
     plain_repeated_kfold,
 )
 
+# There is deliberately no QUALIFYING_COMBOS_CSV here any more. It used to be a
+# SECOND hardcoded copy of the cohort path, independent of folds.py's -- so a run
+# could take its labels from one cohort and the combos its features are computed
+# on from another, with nothing raising. The cohort now comes from the resolved
+# LabelVariant, leaving nowhere for the two to disagree.
 OUT_DIR = Path(__file__).parent
-QUALIFYING_COMBOS_CSV = Path(__file__).parent.parent / "metadata_eda" / "cohort/qualifying_cell_line_pool_min10_per_timepoint.csv"
 N_SPLITS = 5
 N_REPEATS = 10
 N_PCS = 10
@@ -101,8 +109,62 @@ def append_fold_rows(out_path: Path, chunk: pd.DataFrame) -> None:
     chunk[header_cols].to_csv(out_path, mode="a", header=False, index=False)
 
 
+def complete_folds(prev: pd.DataFrame, expected_combos: int) -> tuple[set[tuple], set[tuple]]:
+    """Split the folds already on disk into (complete, partial).
+
+    Resume previously treated the mere PRESENCE of a (scheme, repeat, fold)
+    key as proof the whole fold had been written. It is not: a process killed
+    part-way through appending a fold leaves some of its rows on disk, and on
+    restart that fold is skipped forever. Nothing raises, and the finished
+    table is short a few lines of one fold -- a plausible, non-crashing, wrong
+    feature table, which is this repo's characteristic failure.
+
+    A fold counts as complete only if it holds exactly `expected_combos` rows
+    with distinct (cell_line, pool) keys. Partial folds are returned so the
+    caller can drop and recompute them."""
+    keys = ["scheme", "repeat", "fold"]
+    complete, partial = set(), set()
+    for key, group in prev.groupby(keys, observed=True):
+        key = (str(key[0]), int(key[1]), int(key[2]))
+        n_unique = len(group[["cell_line", "pool"]].drop_duplicates())
+        if len(group) == expected_combos and n_unique == expected_combos:
+            complete.add(key)
+        else:
+            partial.add(key)
+    return complete, partial
+
+
+def _read_resumable(out_path: Path) -> pd.DataFrame:
+    """Read a partially written table, tolerating a truncated final line.
+
+    A crash mid-write can leave the last row cut off. That shows up two ways,
+    and BOTH have to be handled:
+
+      * too many fields -> pandas raises ParserError, and the file is unreadable
+      * too few fields  -> pandas SILENTLY PADS the row with NaN, so it survives
+        as a full-looking row and would be counted toward the fold's size
+
+    The second is the dangerous one: the fold would then look complete. A
+    finished feature table has no nulls anywhere, so any row carrying one is
+    truncation, and is dropped. The fold it belonged to is incomplete either
+    way and gets recomputed."""
+    try:
+        df = pd.read_csv(out_path)
+    except pd.errors.ParserError:
+        text = out_path.read_text().splitlines()
+        print(f"{out_path.name}: final line is unparseable, dropping it before resume")
+        df = pd.read_csv(StringIO("\n".join(text[:-1]) + "\n"))
+
+    incomplete = df.isna().any(axis=1)
+    if incomplete.any():
+        print(f"{out_path.name}: dropping {int(incomplete.sum())} truncated row(s) before resume")
+        df = df.loc[~incomplete]
+    return df
+
+
 def main(
     timepoint: str = "D11",
+    label_variant: str = "published",
     n_splits: int = N_SPLITS,
     n_repeats: int = N_REPEATS,
     out_suffix: str = "",
@@ -132,7 +194,9 @@ def main(
     disk. Pass resume=False to discard any existing output and start
     clean -- required if the fitting population changed, since otherwise
     rows computed under the old settings would be silently kept."""
-    lines = load_lines_with_label()
+    v = get_variant(label_variant)
+    print(f"label variant: {label_variant} -- {v.description}")
+    lines = load_lines_with_label(v)
     folds = {
         "plain": plain_repeated_kfold(lines, n_splits, n_repeats, SEED),
         "donor_grouped": donor_grouped_repeated_kfold(lines, n_splits, n_repeats, SEED),
@@ -147,6 +211,9 @@ def main(
     # donors" a checked fact rather than an assumption: if anything ever
     # perturbs fold construction, the D30 run fails here instead of quietly
     # producing an unpaired comparison that still looks plausible.
+    # The variant suffix is appended HERE, by code. An operator never types it,
+    # so a new-label artifact cannot be aimed at a published path by mistake.
+    out_suffix = f"{out_suffix}{v.suffix}"
     folds_path = OUT_DIR / f"fold_data/fold_assignments{out_suffix}.csv"
     if folds_path.exists():
         # Compare via a scratch file and NEVER overwrite the committed one:
@@ -171,7 +238,7 @@ def main(
     print(f"{total_folds} folds to process ({', '.join(f'{k}={len(v)}' for k, v in folds.items())})")
 
     meta = load_cell_metadata(timepoint)
-    qualifying = pd.read_csv(QUALIFYING_COMBOS_CSV)[["cell_line", "pool"]]
+    qualifying = pd.read_csv(v.cohort_csv)[["cell_line", "pool"]]
     meta_q = meta.merge(qualifying, on=["cell_line", "pool"], how="inner")
 
     # Proportions: no per-fold refit needed (pre-existing labels, no fitting step).
@@ -193,7 +260,16 @@ def main(
 
     done_keys: set[tuple] = set()
     if resume and out_path.exists():
-        prev = pd.read_csv(out_path)
+        prev = _read_resumable(out_path)
+        seen_label = set(prev.get("label_variant", pd.Series(dtype=object)).dropna().unique())
+        if seen_label != {label_variant}:
+            raise ValueError(
+                f"{out_path} records label_variant="
+                f"{sorted(seen_label) if seen_label else 'UNRECORDED (no label_variant column)'} "
+                f"but this run uses {label_variant!r}. The outcome, cohort and threshold all "
+                f"differ between variants, so resuming would mix two analyses in one table. "
+                f"Rerun with --no-resume, or use a different --label-variant."
+            )
         seen = set(prev.get("fit_population", pd.Series(dtype=object)).dropna().unique())
         # An EMPTY `seen` is not "compatible", it is "provenance unknown", and
         # those must not be conflated: a table predating this column could have
@@ -208,10 +284,16 @@ def main(
                 f"but this run fits on {fit_population!r}. Resuming would mix two feature "
                 f"bases in one table. Rerun with --no-resume, or use a different --suffix."
             )
-        done_keys = {
-            (s, int(r), int(fo))
-            for s, r, fo in prev[["scheme", "repeat", "fold"]].drop_duplicates().itertuples(index=False)
-        }
+        done_keys, partial = complete_folds(prev, expected_combos=len(qualifying))
+        if partial:
+            # Rewrite without them rather than leaving them to be skipped. The
+            # rewrite goes via a temp file and os.replace so an interruption
+            # here cannot destroy the good folds too.
+            print(f"discarding {len(partial)} partially written fold(s): {sorted(partial)}")
+            keep = prev.set_index(["scheme", "repeat", "fold"]).index.isin(done_keys)
+            tmp = out_path.with_suffix(".repair.tmp.csv")
+            prev.loc[keep].to_csv(tmp, index=False)
+            os.replace(tmp, out_path)
         print(f"resuming: {len(done_keys)} of {total_folds} folds already in {out_path.name} "
               f"(fit population {fit_population})")
     elif not resume and out_path.exists():
@@ -244,6 +326,7 @@ def main(
             combo["fold"] = f.fold
             combo["split"] = combo["cell_line"].apply(lambda c: "test" if c in held_out else "train")
             combo["fit_population"] = fit_population
+            combo["label_variant"] = label_variant
 
             # Append immediately; header only when creating the file. Column
             # order is fixed by the first write, so reindex every later chunk
@@ -270,6 +353,8 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--timepoint", default="D11", choices=sorted(TIMEPOINT_FILES))
+    parser.add_argument("--label-variant", default="published", choices=sorted(VARIANTS),
+                        help="which cohort+label+threshold bundle to use (see folds.VARIANTS)")
     parser.add_argument("--suffix", default="", help="suffix for the output table")
     parser.add_argument(
         "--restrict-fit-to-qualifying", action="store_true",
@@ -281,6 +366,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     main(
         timepoint=args.timepoint,
+        label_variant=args.label_variant,
         out_suffix=args.suffix,
         restrict_fit_to_qualifying=args.restrict_fit_to_qualifying,
         resume=not args.no_resume,

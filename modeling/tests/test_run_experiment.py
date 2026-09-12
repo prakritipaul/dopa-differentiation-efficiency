@@ -36,7 +36,7 @@ def patched_run_all(monkeypatch, tmp_path):
     pd.DataFrame({"scheme": ["placeholder"]}).to_csv(csv, index=False)
     monkeypatch.setattr(run_experiment, "SCHEMES", ["plain", "donor_grouped", "loco", "lodo"])
     monkeypatch.setattr(run_experiment, "CORRECTIONS", [False])
-    monkeypatch.setattr(run_experiment, "load_lines_with_label", lambda: pd.DataFrame())
+    monkeypatch.setattr(run_experiment, "load_lines_with_label", lambda _variant: pd.DataFrame())
     monkeypatch.setattr(run_experiment, "run_flat_cv",
                         lambda _ff, _lines, scheme, _task, _correction: _summary_predictions(scheme))
     monkeypatch.setattr(run_experiment, "run_nested_cv",

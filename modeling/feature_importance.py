@@ -234,7 +234,7 @@ def fit_full_model_coefficients(
     model_spec: ModelSpec, task: str, k: int, params: dict, pca_csv: Path | None = None
 ) -> pd.Series:
     features = load_full_fit_features(pca_csv)
-    lines = load_lines_with_label()
+    lines = load_lines_with_label("published")  # guarded: main() refuses other variants
     features = features.merge(lines[["cell_line", "diff_efficiency", "success"]], on="cell_line")
 
     feature_names = _model_feature_names(k)
@@ -287,7 +287,7 @@ def summarize_coefficients(fold_coefs: pd.DataFrame, full_fit_coefs: pd.Series, 
 
 def univariate_association(task: str, pca_csv: Path | None = None) -> pd.Series:
     features = load_full_fit_features(pca_csv)
-    lines = load_lines_with_label()
+    lines = load_lines_with_label("published")  # guarded: main() refuses other variants
     df = features.merge(lines[["cell_line", "diff_efficiency", "success"]], on="cell_line")
     y = df["diff_efficiency" if task == "regression" else "success"]
 
@@ -498,7 +498,7 @@ def run_for_model(
 
     feature_names = _model_feature_names(k)
     full_fit_coefs = fit_full_model_coefficients(model_spec, task, k, params, pca_csv)
-    lines = load_lines_with_label()
+    lines = load_lines_with_label("published")  # guarded: main() refuses other variants
 
     fold_features = pd.read_csv(fold_features_csv)
     fold_coefs = fold_coefficient_stability(fold_features, lines, scheme, task, model_spec, k, params)
@@ -552,8 +552,19 @@ def main(
     fold_features_csv: Path = OUT_DIR / "fold_data/fold_features_D11_full.csv",
     out_suffix: str = "",
     pca_csv: Path | None = None,
+    label_variant: str = "published",
 ) -> None:
     """All four models, not just the L1 pair.
+
+    label_variant: ONLY "published" is supported, and anything else is refused
+    immediately -- before any data is read or any output created. This module's
+    full-fit columns (coefficient, SHAP, univariate, technical covariate) come
+    from `metadata_eda/pca/d11_pca_coords_per_line.csv`, a global PCA basis fit
+    under the PUBLISHED cohort, while its fold-level columns (LOCO, permutation,
+    selection frequency) would come from the new variant's fold features. That
+    is exactly the mixed-basis table documented in modeling/README.md. Supporting
+    another variant requires re-running 005 against that cohort first; until
+    then, failing loudly beats emitting a table nobody diffs.
 
     The L1 variants (lasso, logistic_l1) are the more informative ones
     here -- only they produce sparsity, so `regularized_to_zero` and
@@ -568,6 +579,14 @@ def main(
     exist -- falling back to the default would silently produce a table
     whose full-fit columns describe one PCA basis and whose fold-level
     columns describe another."""
+    if label_variant != "published":
+        raise NotImplementedError(
+            f"feature_importance does not support label_variant={label_variant!r}. Its full-fit "
+            f"columns come from metadata_eda/pca/d11_pca_coords_per_line.csv, a global PCA basis "
+            f"fit under the PUBLISHED cohort; combining those with fold-level columns from another "
+            f"cohort is the mixed-basis defect in modeling/README.md. Re-run 005 against that "
+            f"cohort first, then add support here deliberately."
+        )
     if pca_csv is None and out_suffix:
         pca_csv = D11_PCA_CSV.with_name(f"pca/d11_pca_coords_per_line{out_suffix}.csv")
         if not pca_csv.exists():

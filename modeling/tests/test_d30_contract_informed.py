@@ -5,6 +5,8 @@ import pandas as pd
 import pytest
 from sklearn.decomposition import PCA
 
+from modeling import folds as folds_mod
+
 
 def _install_synthetic_expression(monkeypatch, features, expression):
     """Replace h5 streaming only; preserve features.py's masking contract."""
@@ -95,7 +97,7 @@ def test_resume_rejects_mixed_or_unrecorded_fit_population_before_any_pca_work(
          "diff_efficiency": [0.1, 0.3], "success": [False, True]}
     )
     fold = Fold("plain", 0, 0, ("a",), ("b",))
-    monkeypatch.setattr(extraction, "load_lines_with_label", lambda: lines)
+    monkeypatch.setattr(extraction, "load_lines_with_label", lambda _variant: lines)
     monkeypatch.setattr(extraction, "plain_repeated_kfold", lambda *a, **k: [fold])
     monkeypatch.setattr(extraction, "donor_grouped_repeated_kfold", lambda *a, **k: [])
     monkeypatch.setattr(
@@ -112,7 +114,12 @@ def test_resume_rejects_mixed_or_unrecorded_fit_population_before_any_pca_work(
     )
     qualifying = tmp_path / "qualifying.csv"
     pd.DataFrame({"cell_line": ["a", "b"], "pool": ["p", "p"]}).to_csv(qualifying, index=False)
-    monkeypatch.setattr(extraction, "QUALIFYING_COMBOS_CSV", qualifying)
+    # Cohort path now comes from the registry, so register a throwaway variant
+    # instead of patching a module constant that no longer exists.
+    monkeypatch.setitem(folds_mod.VARIANTS, "audit_tmp", folds_mod.LabelVariant(
+        suffix="", cohort_csv=qualifying, label_csv=qualifying,
+        threshold=0.2, n_lines=2, description="throwaway audit fixture",
+    ))
     monkeypatch.setattr(
         extraction, "compute_pca_features_for_fold",
         lambda *a, **k: pytest.fail("PCA must not run before provenance validation"),
@@ -124,10 +131,11 @@ def test_resume_rejects_mixed_or_unrecorded_fit_population_before_any_pca_work(
     if recorded_population is not None:
         previous["fit_population"] = [recorded_population]
     pd.DataFrame(previous).to_csv(out, index=False)
-    with pytest.raises(ValueError, match="mix two feature bases|fit_population|provenance"):
+    with pytest.raises(ValueError, match="mix two feature bases|fit_population|label_variant|provenance"):
         extraction.main(
-            timepoint="D30", n_splits=2, n_repeats=1, out_suffix="_audit",
-            include_loco_lodo=False, restrict_fit_to_qualifying=True, resume=True,
+            timepoint="D30", label_variant="audit_tmp", n_splits=2, n_repeats=1,
+            out_suffix="_audit", include_loco_lodo=False,
+            restrict_fit_to_qualifying=True, resume=True,
         )
 
 

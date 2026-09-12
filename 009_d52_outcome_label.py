@@ -45,17 +45,18 @@ def _load_module(name: str):
 m004 = _load_module("004_d11_celltype_proportion_se")
 
 
-def load_d52_obs(untreated_only: bool = False) -> pd.DataFrame:
-    """untreated_only: drop rotenone-treated cells. See main()'s docstring --
-    this is a deliberate divergence from the published definition, and the
-    default reproduces it."""
+def load_d52_obs(untreated_only: bool = False,
+                 numerator: set[str] = DIFFERENTIATED_CELLTYPES) -> pd.DataFrame:
+    """untreated_only: drop rotenone-treated cells. numerator: which D52 cell
+    types count as 'differentiated'. Both defaults reproduce the published
+    definition; see main()'s docstring for why departing from it is deliberate."""
     with h5py.File(DAY52_FILE, "r") as f:
         cell_line = m004.read_obs_categorical(f, "donor_id")
         pool = m004.read_obs_categorical(f, "pool_id")
         celltype = m004.read_obs_categorical(f, "celltype")
         treatment = m004.read_obs_categorical(f, "treatment")
 
-    is_differentiated = pd.Series(celltype).isin(DIFFERENTIATED_CELLTYPES)
+    is_differentiated = pd.Series(celltype).isin(numerator)
     label = pd.Categorical(np.where(is_differentiated, "differentiated", "other"))
 
     obs = pd.DataFrame({"cell_line": cell_line, "pool": pool, "celltype": label,
@@ -68,7 +69,11 @@ def load_d52_obs(untreated_only: bool = False) -> pd.DataFrame:
     return obs.drop(columns="treatment")
 
 
-def plot_label(label: pd.DataFrame, out_suffix: str = "") -> None:
+def plot_label(label: pd.DataFrame, out_suffix: str = "",
+               numerator: set[str] = DIFFERENTIATED_CELLTYPES) -> None:
+    """numerator is passed in so the axis label describes what was actually
+    counted. It used to be the hardcoded string "DA + Sert", which would
+    silently mislabel the DA-only plot."""
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
 
     sub = label.sort_values("diff_efficiency")
@@ -78,7 +83,7 @@ def plot_label(label: pd.DataFrame, out_suffix: str = "") -> None:
         fmt="o", ms=3, elinewidth=1, capsize=0, alpha=0.7,
     )
     axes[0].set_xlabel("cell_line, sorted by diff_efficiency")
-    axes[0].set_ylabel("diff_efficiency (DA + Sert fraction at D52)")
+    axes[0].set_ylabel(f"diff_efficiency ({' + '.join(sorted(numerator))} fraction at D52)")
     axes[0].set_title("D52 differentiation efficiency per cell line")
 
     axes[1].hist(label["diff_efficiency"], bins=20)
@@ -91,7 +96,9 @@ def plot_label(label: pd.DataFrame, out_suffix: str = "") -> None:
     plt.close(fig)
 
 
-def main(untreated_only: bool = False, out_suffix: str = "") -> None:
+def main(untreated_only: bool = False, out_suffix: str = "",
+         numerator: set[str] = DIFFERENTIATED_CELLTYPES,
+         cohort_suffix: str | None = None) -> None:
     """untreated_only: compute the label from untreated D52 cells only.
 
     A DELIBERATE DIVERGENCE from the published definition. The authors'
@@ -113,13 +120,21 @@ def main(untreated_only: bool = False, out_suffix: str = "") -> None:
     flag this repo has already been bitten by."""
     OUT_DIR.mkdir(exist_ok=True)
 
-    combos_csv = OUT_DIR / f"cohort/qualifying_cell_line_pool_min10_per_timepoint{out_suffix}.csv"
+    # The cohort and the label are DIFFERENT AXES. The cohort depends on cell
+    # counts, not on which cell types define the outcome, so the DA-only label
+    # is built on the same `_untreated` cohort as the DA+Sert one. A single
+    # suffix cannot name both correctly, hence cohort_suffix is separate --
+    # defaulting to out_suffix preserves every existing invocation.
+    cohort_suffix = out_suffix if cohort_suffix is None else cohort_suffix
+    combos_csv = OUT_DIR / f"cohort/qualifying_cell_line_pool_min10_per_timepoint{cohort_suffix}.csv"
     if not combos_csv.exists():
         raise SystemExit(f"missing {combos_csv} -- run 003_qualifying_cell_lines.py "
                          f"with a matching --suffix first")
     print(f"cohort: {combos_csv.name}")
+    print(f"numerator: {sorted(numerator)}")
     qualifying = pd.read_csv(combos_csv)[["cell_line", "pool"]]
-    obs = load_d52_obs(untreated_only).merge(qualifying, on=["cell_line", "pool"], how="inner")
+    obs = load_d52_obs(untreated_only, numerator).merge(
+        qualifying, on=["cell_line", "pool"], how="inner")
 
     pool_level = m004.compute_pool_level_proportions_and_se(obs)
     line_level = m004.collapse_to_line_level(pool_level)
@@ -137,7 +152,7 @@ def main(untreated_only: bool = False, out_suffix: str = "") -> None:
     print("\nLowest diff_efficiency:")
     print(label.sort_values("diff_efficiency").head(5).to_string(index=False))
 
-    plot_label(label, out_suffix)
+    plot_label(label, out_suffix, numerator)
     print(f"\nSaved CSV and plot to {OUT_DIR}")
 
 
@@ -148,10 +163,17 @@ if __name__ == "__main__":
     parser.add_argument("--untreated-only", action="store_true",
                         help="compute the label from untreated D52 cells only")
     parser.add_argument("--suffix", default="",
-                        help="suffix selecting the cohort read AND the label written; "
-                             "required with --untreated-only")
+                        help="suffix for the label written; required with --untreated-only/--da-only")
+    parser.add_argument("--cohort-suffix", default=None,
+                        help="suffix of the COHORT read; defaults to --suffix. Separate because "
+                             "the cohort depends on cell counts, not on which cell types define "
+                             "the outcome (e.g. _untreated cohort, _da_untreated label)")
+    parser.add_argument("--da-only", action="store_true",
+                        help="count only DA cells in the numerator, not DA+Sert")
     args = parser.parse_args()
-    if args.untreated_only and not args.suffix:
-        parser.error("--untreated-only changes the label, so it needs a --suffix "
+    if (args.untreated_only or args.da_only) and not args.suffix:
+        parser.error("--untreated-only/--da-only change the label, so they need a --suffix "
                      "rather than overwriting the published label file")
-    main(untreated_only=args.untreated_only, out_suffix=args.suffix)
+    main(untreated_only=args.untreated_only, out_suffix=args.suffix,
+         numerator={"DA"} if args.da_only else DIFFERENTIATED_CELLTYPES,
+         cohort_suffix=args.cohort_suffix)

@@ -88,7 +88,7 @@ def test_proportion_columns_reject_invalid_compositions(frame, message):
 
 
 def test_folds_are_deterministic_timepoint_free_and_obey_grouping_contract():
-    lines = load_lines_with_label()
+    lines = load_lines_with_label("published")
     first = all_folds(lines, n_splits=5, n_repeats=2, seed=1729)
     second = all_folds(lines.copy(), n_splits=5, n_repeats=2, seed=1729)
     # There is deliberately no timepoint argument: either early-timepoint data

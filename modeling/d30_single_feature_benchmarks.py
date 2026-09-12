@@ -41,7 +41,7 @@ from scipy.stats import spearmanr
 from sklearn.metrics import roc_auc_score
 
 from modeling.features import compute_proportion_features, load_cell_metadata, pool_then_line_average
-from modeling.folds import QUALIFYING_COMBOS_CSV, load_lines_with_label
+from modeling.folds import VARIANTS, get_variant, load_lines_with_label
 from modeling.make_d30_variant_tables import OFF_TARGET, PROGENITOR, TARGET_LIKE
 
 OUT_DIR = Path(__file__).parent
@@ -81,7 +81,7 @@ BENCHMARKS = {
 }
 
 
-def d30_line_level_proportions() -> pd.DataFrame:
+def d30_line_level_proportions(variant: str = "published") -> pd.DataFrame:
     """One row per qualifying cell line: every D30 phat_* column, aggregated
     pool-then-line -- the same two-stage averaging the fitted pipeline uses,
     so these benchmarks and the models see identical feature values.
@@ -91,7 +91,7 @@ def d30_line_level_proportions() -> pd.DataFrame:
     them from one arbitrary fold would imply a fold-dependence that does not
     exist."""
     meta = load_cell_metadata("D30")
-    qualifying = pd.read_csv(QUALIFYING_COMBOS_CSV)[["cell_line", "pool"]]
+    qualifying = pd.read_csv(get_variant(variant).cohort_csv)[["cell_line", "pool"]]
     meta_q = meta.merge(qualifying, on=["cell_line", "pool"], how="inner")
     props = compute_proportion_features(meta_q)
     value_cols = [c for c in props.columns if c.startswith("phat_")]
@@ -141,10 +141,13 @@ def bootstrap_by_donor(
     return out
 
 
-def main() -> None:
-    props = d30_line_level_proportions()
-    lines = load_lines_with_label().merge(props, on="cell_line", how="inner")
-    assert len(lines) == 138, f"expected 138 lines, got {len(lines)}"
+def main(label_variant: str = "published") -> None:
+    v = get_variant(label_variant)
+    props = d30_line_level_proportions(label_variant)
+    lines = load_lines_with_label(label_variant).merge(
+        props, on="cell_line", how="inner", validate="one_to_one")
+    if len(lines) != v.n_lines:
+        raise ValueError(f"expected {v.n_lines} lines, got {len(lines)}")
 
     rows = []
     for name, (cols, denom_cols, direction) in BENCHMARKS.items():
@@ -166,7 +169,7 @@ def main() -> None:
                      "direction": direction, "mean_fraction": lines[name].mean(), **point, **ci})
 
     out = pd.DataFrame(rows)
-    out_path = OUT_DIR / "results/d30_single_feature_benchmarks.csv"
+    out_path = OUT_DIR / f"results/d30_single_feature_benchmarks{v.suffix}.csv"
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out.to_csv(out_path, index=False)
 
@@ -191,4 +194,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--label-variant", default="published", choices=sorted(VARIANTS))
+    main(parser.parse_args().label_variant)
