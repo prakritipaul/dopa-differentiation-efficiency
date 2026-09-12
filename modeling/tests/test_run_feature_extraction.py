@@ -65,10 +65,15 @@ def test_resume_refuses_a_table_with_no_recorded_fit_population(monkeypatch, tmp
                         restrict_fit_to_qualifying=True, resume=True)
 
 
-def _fold_rows(scheme, repeat, fold, n_combos):
+EXPECTED_KEYS = {(f"line{i}", "p") for i in range(5)}
+
+
+def _fold_rows(scheme, repeat, fold, lines=None):
+    lines = [f"line{i}" for i in range(5)] if lines is None else lines
+    n = len(lines)
     return pd.DataFrame({
-        "scheme": [scheme] * n_combos, "repeat": [repeat] * n_combos, "fold": [fold] * n_combos,
-        "cell_line": [f"line{i}" for i in range(n_combos)], "pool": ["p"] * n_combos,
+        "scheme": [scheme] * n, "repeat": [repeat] * n, "fold": [fold] * n,
+        "cell_line": lines, "pool": ["p"] * n, "PC1": [0.5] * n,
     })
 
 
@@ -78,34 +83,73 @@ def test_a_partially_written_fold_is_not_counted_as_done():
     killed mid-append leaves some of that fold's rows on disk; it was then
     skipped forever, and the finished table was silently short a few rows of
     one fold -- plausible, non-crashing, and wrong."""
-    prev = pd.concat([_fold_rows("plain", 0, 0, 5), _fold_rows("plain", 0, 1, 3)])
-    complete, partial = extraction.complete_folds(prev, expected_combos=5)
+    prev = pd.concat([_fold_rows("plain", 0, 0),
+                      _fold_rows("plain", 0, 1, ["line0", "line1", "line2"])])
+    complete, partial = extraction.complete_folds(prev, EXPECTED_KEYS)
     assert complete == {("plain", 0, 0)}
     assert partial == {("plain", 0, 1)}, "the short fold must be recomputed, not skipped"
 
 
-def test_a_fold_with_duplicate_combos_is_treated_as_partial():
-    # Right row count, wrong content: a retry that appended some rows twice.
-    dup = pd.concat([_fold_rows("plain", 0, 0, 4), _fold_rows("plain", 0, 0, 1)])
-    complete, partial = extraction.complete_folds(dup, expected_combos=5)
+def test_right_count_but_wrong_keys_is_partial():
+    """Why a row COUNT is not the contract. This fold is missing one expected
+    line and carries one unexpected line instead: the number of distinct keys
+    is exactly right, so a cardinality check passes while the fold describes
+    the wrong population. Found by independent review of the first version."""
+    wrong = _fold_rows("plain", 0, 0, ["line0", "line1", "line2", "line3", "INTRUDER"])
+    assert len(wrong) == len(EXPECTED_KEYS)              # the cardinality check would pass
+    complete, partial = extraction.complete_folds(wrong, EXPECTED_KEYS)
     assert complete == set() and partial == {("plain", 0, 0)}
+
+
+def test_a_fold_with_duplicate_combos_is_treated_as_partial():
+    # Right key SET but a duplicated row: a retry that appended some rows twice.
+    dup = pd.concat([_fold_rows("plain", 0, 0), _fold_rows("plain", 0, 0, ["line0"])])
+    complete, partial = extraction.complete_folds(dup, EXPECTED_KEYS)
+    assert complete == set() and partial == {("plain", 0, 0)}
+
+
+def test_a_fold_with_a_null_or_infinite_value_is_partial():
+    # NaN-padding from a truncated row, and a non-finite feature value, both
+    # make the fold untrustworthy even when its keys are exactly right.
+    nan_row = _fold_rows("plain", 0, 0)
+    nan_row.loc[2, "PC1"] = float("nan")
+    assert extraction.complete_folds(nan_row, EXPECTED_KEYS)[1] == {("plain", 0, 0)}
+
+    inf_row = _fold_rows("plain", 0, 0)
+    inf_row.loc[2, "PC1"] = float("inf")
+    assert extraction.complete_folds(inf_row, EXPECTED_KEYS)[1] == {("plain", 0, 0)}
 
 
 def test_complete_folds_accepts_a_fully_written_fold():
     # The check must be able to FAIL in the other direction too -- a guard that
-    # rejects everything would pass the two tests above while blocking all work.
-    prev = _fold_rows("loco", 0, 7, 5)
-    complete, partial = extraction.complete_folds(prev, expected_combos=5)
+    # rejects everything would pass every test above while blocking all work.
+    complete, partial = extraction.complete_folds(_fold_rows("loco", 0, 7), EXPECTED_KEYS)
     assert complete == {("loco", 0, 7)} and partial == set()
 
 
 def test_a_truncated_final_line_is_dropped_rather_than_failing_the_read(tmp_path):
     out = tmp_path / "t.csv"
-    _fold_rows("plain", 0, 0, 3).to_csv(out, index=False)
+    _fold_rows("plain", 0, 0, ["line0", "line1", "line2"]).to_csv(out, index=False)
     with out.open("a") as fh:
-        fh.write("plain,0,0,line3")  # cut off mid-record, as a kill would leave it
+        fh.write("plain,0,0,line3,p,0.1,EXTRA,FIELDS\n")  # too many fields -> ParserError
     got = extraction._read_resumable(out)
-    assert len(got) == 3, "the complete rows must survive; the partial one is dropped"
+    assert len(got) == 3, "the complete rows must survive; the unparseable one is dropped"
+
+
+def test_a_nan_padded_truncated_row_survives_the_read_and_is_caught_by_the_fold_check(tmp_path):
+    """The complementary case, handled at the right layer. A row cut off with
+    too FEW fields is silently NaN-padded rather than raising, so the reader
+    keeps it -- and complete_folds, not the reader, is what rejects the fold.
+    Dropping null rows in the reader would also discard a genuine missing
+    value and hide whatever produced it."""
+    out = tmp_path / "t.csv"
+    _fold_rows("plain", 0, 0).to_csv(out, index=False)
+    with out.open("a") as fh:
+        fh.write("plain,0,1,line0\n")  # cut off after cell_line
+    got = extraction._read_resumable(out)
+    assert len(got) == 6, "the reader keeps it; judging it is the fold check's job"
+    complete, partial = extraction.complete_folds(got, EXPECTED_KEYS)
+    assert complete == {("plain", 0, 0)} and partial == {("plain", 0, 1)}
 
 
 def test_appending_a_chunk_with_an_extra_column_raises_instead_of_dropping_it(tmp_path):

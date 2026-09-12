@@ -51,6 +51,7 @@ import time
 from io import StringIO
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from modeling.features import (
@@ -109,57 +110,73 @@ def append_fold_rows(out_path: Path, chunk: pd.DataFrame) -> None:
     chunk[header_cols].to_csv(out_path, mode="a", header=False, index=False)
 
 
-def complete_folds(prev: pd.DataFrame, expected_combos: int) -> tuple[set[tuple], set[tuple]]:
+def complete_folds(
+    prev: pd.DataFrame, expected_keys: set[tuple[str, str]]
+) -> tuple[set[tuple], set[tuple]]:
     """Split the folds already on disk into (complete, partial).
 
     Resume previously treated the mere PRESENCE of a (scheme, repeat, fold)
     key as proof the whole fold had been written. It is not: a process killed
-    part-way through appending a fold leaves some of its rows on disk, and on
-    restart that fold is skipped forever. Nothing raises, and the finished
-    table is short a few lines of one fold -- a plausible, non-crashing, wrong
-    feature table, which is this repo's characteristic failure.
+    part-way through appending leaves some of that fold's rows on disk, and on
+    restart the fold is skipped forever. Nothing raises, and the finished table
+    is quietly short a few rows -- this repo's characteristic failure.
 
-    A fold counts as complete only if it holds exactly `expected_combos` rows
-    with distinct (cell_line, pool) keys. Partial folds are returned so the
-    caller can drop and recompute them."""
+    The contract is EXACT KEY-SET EQUALITY, not a row count. Counting is not
+    enough, and the difference is not hypothetical: a fold missing one expected
+    (cell_line, pool) and carrying one unexpected one has the right number of
+    distinct keys and would pass a cardinality check while describing the wrong
+    population. Independent review caught that in the first version of this
+    function.
+
+    A fold is complete only when it has exactly one row per expected key, no
+    extras, and no nulls or non-finite values anywhere in it. Anything else is
+    returned as partial so the caller can drop and recompute it -- malformed
+    rows are never silently dropped on their own, because doing so would repair
+    the symptom and hide whatever produced it."""
     keys = ["scheme", "repeat", "fold"]
     complete, partial = set(), set()
     for key, group in prev.groupby(keys, observed=True):
         key = (str(key[0]), int(key[1]), int(key[2]))
-        n_unique = len(group[["cell_line", "pool"]].drop_duplicates())
-        if len(group) == expected_combos and n_unique == expected_combos:
-            complete.add(key)
-        else:
-            partial.add(key)
+        got = set(map(tuple, group[["cell_line", "pool"]].itertuples(index=False)))
+        numeric = group.select_dtypes(include="number")
+        intact = (
+            got == expected_keys
+            and len(group) == len(expected_keys)      # one row per key, no duplicates
+            and not group.isna().any().any()
+            and bool(np.isfinite(numeric.to_numpy(dtype=float)).all())
+        )
+        (complete if intact else partial).add(key)
     return complete, partial
 
 
 def _read_resumable(out_path: Path) -> pd.DataFrame:
     """Read a partially written table, tolerating a truncated final line.
 
-    A crash mid-write can leave the last row cut off. That shows up two ways,
-    and BOTH have to be handled:
+    A crash mid-write can leave the last row cut off with TOO MANY fields for
+    the parser, which raises and makes the whole file unreadable. Dropping that
+    one line is safe -- the fold it belonged to is incomplete either way and
+    complete_folds() will send it back for recomputation.
 
-      * too many fields -> pandas raises ParserError, and the file is unreadable
-      * too few fields  -> pandas SILENTLY PADS the row with NaN, so it survives
-        as a full-looking row and would be counted toward the fold's size
+    The complementary case, a row with too FEW fields, is deliberately NOT
+    handled here. pandas silently pads it with NaN, and an earlier version of
+    this function dropped every null-bearing row on that basis. That was wrong
+    twice over: it would also have discarded a genuinely missing value, hiding
+    an upstream defect rather than surfacing it, and it is not a reliable
+    truncation test anyway (a truncated numeric token can stay valid -- 1.2345
+    cut to 1.23 is still a number). Nulls and non-finite values are instead
+    judged by complete_folds(), which recomputes the whole fold.
 
-    The second is the dangerous one: the fold would then look complete. A
-    finished feature table has no nulls anywhere, so any row carrying one is
-    truncation, and is dropped. The fold it belonged to is incomplete either
-    way and gets recomputed."""
+    ponytail: a value truncated inside the FINAL column while staying
+    syntactically valid is undetectable here. In practice the final column is
+    `label_variant`, so a truncated one ("da_untre") fails the resume
+    provenance check and raises. Per-fold atomic writes would close it
+    properly; not worth it until this actually bites."""
     try:
-        df = pd.read_csv(out_path)
+        return pd.read_csv(out_path)
     except pd.errors.ParserError:
         text = out_path.read_text().splitlines()
         print(f"{out_path.name}: final line is unparseable, dropping it before resume")
-        df = pd.read_csv(StringIO("\n".join(text[:-1]) + "\n"))
-
-    incomplete = df.isna().any(axis=1)
-    if incomplete.any():
-        print(f"{out_path.name}: dropping {int(incomplete.sum())} truncated row(s) before resume")
-        df = df.loc[~incomplete]
-    return df
+        return pd.read_csv(StringIO("\n".join(text[:-1]) + "\n"))
 
 
 def main(
@@ -284,7 +301,8 @@ def main(
                 f"but this run fits on {fit_population!r}. Resuming would mix two feature "
                 f"bases in one table. Rerun with --no-resume, or use a different --suffix."
             )
-        done_keys, partial = complete_folds(prev, expected_combos=len(qualifying))
+        expected_keys = set(map(tuple, qualifying[["cell_line", "pool"]].itertuples(index=False)))
+        done_keys, partial = complete_folds(prev, expected_keys)
         if partial:
             # Rewrite without them rather than leaving them to be skipped. The
             # rewrite goes via a temp file and os.replace so an interruption
