@@ -45,19 +45,30 @@ def _load_module(name: str):
 m004 = _load_module("004_d11_celltype_proportion_se")
 
 
-def load_d52_obs() -> pd.DataFrame:
+def load_d52_obs(untreated_only: bool = False) -> pd.DataFrame:
+    """untreated_only: drop rotenone-treated cells. See main()'s docstring --
+    this is a deliberate divergence from the published definition, and the
+    default reproduces it."""
     with h5py.File(DAY52_FILE, "r") as f:
         cell_line = m004.read_obs_categorical(f, "donor_id")
         pool = m004.read_obs_categorical(f, "pool_id")
         celltype = m004.read_obs_categorical(f, "celltype")
+        treatment = m004.read_obs_categorical(f, "treatment")
 
     is_differentiated = pd.Series(celltype).isin(DIFFERENTIATED_CELLTYPES)
     label = pd.Categorical(np.where(is_differentiated, "differentiated", "other"))
 
-    return pd.DataFrame({"cell_line": cell_line, "pool": pool, "celltype": label})
+    obs = pd.DataFrame({"cell_line": cell_line, "pool": pool, "celltype": label,
+                        "treatment": treatment})
+    if untreated_only:
+        before = len(obs)
+        obs = obs[obs["treatment"] == "NONE"]
+        print(f"untreated_only: kept {len(obs)} of {before} D52 cells "
+              f"({before - len(obs)} rotenone-treated dropped)")
+    return obs.drop(columns="treatment")
 
 
-def plot_label(label: pd.DataFrame) -> None:
+def plot_label(label: pd.DataFrame, out_suffix: str = "") -> None:
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
 
     sub = label.sort_values("diff_efficiency")
@@ -76,15 +87,39 @@ def plot_label(label: pd.DataFrame) -> None:
     axes[1].set_title("Distribution of D52 diff_efficiency")
 
     fig.tight_layout()
-    fig.savefig(OUT_DIR / "plots/plot_d52_diff_efficiency.png", dpi=150)
+    fig.savefig(OUT_DIR / f"plots/plot_d52_diff_efficiency{out_suffix}.png", dpi=150)
     plt.close(fig)
 
 
-def main() -> None:
+def main(untreated_only: bool = False, out_suffix: str = "") -> None:
+    """untreated_only: compute the label from untreated D52 cells only.
+
+    A DELIBERATE DIVERGENCE from the published definition. The authors'
+    notebook computes `diff_efficiency = df2[['DA_D52','Sert_D52']].sum(...)`
+    with no treatment filter at all, so the default (False) reproduces them.
+    But D52 contains 219,238 rotenone-treated cells against 303,856
+    untreated, interleaved such that ALL 159 qualifying (cell_line, pool)
+    combos contain both -- so an unfiltered per-combo fraction necessarily
+    blends them. Rotenone inhibits mitochondrial complex I and
+    preferentially damages dopaminergic neurons, the numerator of this very
+    metric, so the published label conflates differentiation success with
+    toxin sensitivity. Per-line effect is a mean shift of 0.025 and a max of
+    0.405.
+
+    IMPORTANT: out_suffix selects the COHORT file that is read as well as the
+    label file that is written. The two must match -- a label computed on
+    untreated cells against the treated-inclusive cohort would score lines
+    that the untreated cohort excludes, which is the half-threaded variant
+    flag this repo has already been bitten by."""
     OUT_DIR.mkdir(exist_ok=True)
 
-    qualifying = pd.read_csv(QUALIFYING_COMBOS_CSV)[["cell_line", "pool"]]
-    obs = load_d52_obs().merge(qualifying, on=["cell_line", "pool"], how="inner")
+    combos_csv = OUT_DIR / f"cohort/qualifying_cell_line_pool_min10_per_timepoint{out_suffix}.csv"
+    if not combos_csv.exists():
+        raise SystemExit(f"missing {combos_csv} -- run 003_qualifying_cell_lines.py "
+                         f"with a matching --suffix first")
+    print(f"cohort: {combos_csv.name}")
+    qualifying = pd.read_csv(combos_csv)[["cell_line", "pool"]]
+    obs = load_d52_obs(untreated_only).merge(qualifying, on=["cell_line", "pool"], how="inner")
 
     pool_level = m004.compute_pool_level_proportions_and_se(obs)
     line_level = m004.collapse_to_line_level(pool_level)
@@ -93,7 +128,7 @@ def main() -> None:
     label = label.rename(columns={"phat": "diff_efficiency", "se": "diff_efficiency_se"})
     label = label.sort_values("cell_line").reset_index(drop=True)
 
-    label.to_csv(OUT_DIR / "cohort/d52_diff_efficiency_label.csv", index=False)
+    label.to_csv(OUT_DIR / f"cohort/d52_diff_efficiency_label{out_suffix}.csv", index=False)
 
     print(f"{len(label)} cell lines with a D52 diff_efficiency label.")
     print(label["diff_efficiency"].describe().to_string())
@@ -102,9 +137,21 @@ def main() -> None:
     print("\nLowest diff_efficiency:")
     print(label.sort_values("diff_efficiency").head(5).to_string(index=False))
 
-    plot_label(label)
+    plot_label(label, out_suffix)
     print(f"\nSaved CSV and plot to {OUT_DIR}")
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Build the D52 diff_efficiency label.")
+    parser.add_argument("--untreated-only", action="store_true",
+                        help="compute the label from untreated D52 cells only")
+    parser.add_argument("--suffix", default="",
+                        help="suffix selecting the cohort read AND the label written; "
+                             "required with --untreated-only")
+    args = parser.parse_args()
+    if args.untreated_only and not args.suffix:
+        parser.error("--untreated-only changes the label, so it needs a --suffix "
+                     "rather than overwriting the published label file")
+    main(untreated_only=args.untreated_only, out_suffix=args.suffix)

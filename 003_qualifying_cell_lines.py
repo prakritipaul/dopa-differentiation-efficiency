@@ -48,6 +48,10 @@ def load_obs(path: str) -> pd.DataFrame:
         cell_line = read_obs_categorical(f, "donor_id")
         pool = read_obs_categorical(f, "pool_id")
         timepoint = read_obs_categorical(f, "time_point")
+        # Only D52 has more than one level ('NONE', 'ROT'); D11 and D30 are
+        # entirely untreated. Carried for every timepoint anyway so the filter
+        # in main() is one uniform rule rather than a D52 special case.
+        treatment = read_obs_categorical(f, "treatment")
 
     donor = [DONOR_RE.match(cl).group(1) for cl in cell_line]
 
@@ -57,12 +61,40 @@ def load_obs(path: str) -> pd.DataFrame:
             "donor": donor,
             "pool": pool,
             "timepoint": timepoint,
+            "treatment": treatment,
         }
     )
 
 
-def main() -> None:
+def main(untreated_only: bool = False, out_suffix: str = "") -> None:
+    """untreated_only: drop rotenone-treated cells before counting.
+
+    This is a DELIBERATE DIVERGENCE from the published analysis, not a bug
+    fix. The authors' own notebook (plotting_notebooks/Figure_2/
+    fig2b_and_heatmap_extended.ipynb) applies only a >=10 cell threshold and
+    never filters on treatment, so the default (False) reproduces them
+    exactly. But D52 -- and only D52 -- contains rotenone-treated cells
+    (303,856 NONE / 219,238 ROT), interleaved so that every qualifying
+    (cell_line, pool) combo contains both. Rotenone is a mitochondrial
+    complex I inhibitor that preferentially damages dopaminergic neurons,
+    i.e. exactly the cell type in the numerator of `diff_efficiency`, so
+    including treated cells mixes differentiation success with toxin
+    sensitivity.
+
+    Excluding them costs two lines whose untreated D52 count falls below the
+    threshold (HPSI0115i-melw_1 and HPSI0115i-qecv_2, both pool5, 14 cells
+    -> 6 and 8): 138 lines becomes 136, 159 combos becomes 157, donors stay
+    at 20.
+
+    Always pair with a distinct out_suffix. The unsuffixed outputs are the
+    provenance for every result already published from them, and must not be
+    overwritten by a run under different rules."""
     obs = pd.concat([load_obs(path) for path in DATA_FILES], ignore_index=True)
+    if untreated_only:
+        before = len(obs)
+        obs = obs[obs["treatment"] == "NONE"]
+        print(f"untreated_only: kept {len(obs)} of {before} cells "
+              f"({before - len(obs)} rotenone-treated dropped)")
 
     per_combo_counts = (
         obs.groupby(["cell_line", "donor", "pool", "timepoint"], observed=True)
@@ -86,7 +118,7 @@ def main() -> None:
     result = result.sort_values(["cell_line", "pool"]).reset_index(drop=True)
 
     OUT_DIR.mkdir(exist_ok=True)
-    out_path = OUT_DIR / "cohort/qualifying_cell_line_pool_min10_per_timepoint.csv"
+    out_path = OUT_DIR / f"cohort/qualifying_cell_line_pool_min10_per_timepoint{out_suffix}.csv"
     result.to_csv(out_path, index=False)
 
     n_distinct_lines = result["cell_line"].nunique()
@@ -101,4 +133,14 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Build the qualifying (cell_line, pool) cohort.")
+    parser.add_argument("--untreated-only", action="store_true",
+                        help="drop rotenone-treated cells before counting (D52 only has any)")
+    parser.add_argument("--suffix", default="", help="suffix for the output CSV; required with --untreated-only")
+    args = parser.parse_args()
+    if args.untreated_only and not args.suffix:
+        parser.error("--untreated-only changes the cohort, so it needs a --suffix "
+                     "rather than overwriting the published cohort file")
+    main(untreated_only=args.untreated_only, out_suffix=args.suffix)
