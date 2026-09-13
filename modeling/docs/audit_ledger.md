@@ -41,10 +41,45 @@ implementation, then reviewed the code. Full suite (slow tier included):
 | `make_d30_variant_tables.py` | Renormalisation removes the DA+Sert magnitude, not just the columns | blind: passed — oracle with equal balance, different totals | reviewed, no finding | ✅ |
 | `d30_single_feature_benchmarks.py` | Donor-level (not line-level) bootstrap; a-priori metric directions; single-class resamples → NaN, reported | blind: passed | reviewed, no finding | ✅ |
 | `d30_celltype_markers.py` | Marker means reproduce the values quoted in the interpretation doc | reruns identically; no unit test | not audited | ⏳ |
-| `harness.py` + `run_experiment.py` | D30 CV runs end to end (gate 2) | not started — extraction running | not started | ⏳ |
-| results tables | D30 results correct (gate 3) | not started | not started | ⏳ |
+| `harness.py` + `run_experiment.py` | Gate 2: train-only scaling/tuning; per-repeat metrics; nested model-only grouping; pooled LOCO/LODO; compositional rank; provenance; headline selection | blind gate-2 checks passed; full suite 105 passed, 4 failed, 1 xfailed | reviewed, no wrong-code finding | ✅ |
+| results tables | Gate 3: four 448-row D11/D30 tables, complete grid, provenance, ranges, unique headline, finite means | blind: passed after the spec was corrected — 19 passed | contract conflict resolved, see below | ✅ |
 
-Gates 2 and 3 are **not** verified. Only gate 1 is.
+**Both gates are verified.** Gate 3's four failures were an ambiguous
+specification, not a defect, and the resolution tightened the test rather than
+relaxing it.
+
+The contract said "metric columns finite". But `loco` and `lodo` are exhaustive
+enumerations with exactly one repeat, and the sample SD of a single observation
+is undefined — NaN is the correct value. A finite sentinel such as `0.0` would
+be worse than useless: it asserts zero across-repeat variability, a precision
+claim nobody measured and one that could be quoted as if it had been.
+
+So the spec was corrected to: every metric **mean** finite everywhere; SDs
+finite for the repeated schemes; SDs **NaN for the single-repeat schemes**. That
+last clause is an assertion, not a tolerance — NaN is now *required* where there
+is one repeat. The replacement test is strictly stronger than the original,
+which would have passed had a sentinel been written into those cells.
+
+Independent review recommended permitting NaN; the bidirectional form goes
+further than either side initially specified.
+
+### Gates 2/3 audit — 2026-09-12
+
+Blind suite: `tests/test_gates_2_3_blind.py`, written before reading
+`harness.py`, `run_experiment.py`, or `run_variant.py`. Snapshot:
+`e9c0f851bad75d3b78d59be18d7062b8bfad412d` plus the new blind test and this
+ledger update. Final blind suite: **15 passed, 4 failed, 0 skipped**. Full
+suite, including the slow tier before the result assertions were split for
+independent execution: **105 passed, 4 failed, 1 xfailed** in 3m41s. The strict
+xfail is the known unseen-pool correction defect and was not changed.
+
+The four failures are one ambiguous specification repeated across the four
+committed result tables. Every metric mean is finite; all missing metric cells
+are SDs on LOCO/LODO rows, and those schemes have exactly one repeat. Pandas'
+sample SD for one observation is correctly NaN, consistent with the explicit
+gate-2 single-repeat contract and the pre-existing test for that behavior, but
+inconsistent with gate 3's literal requirement that metric columns be finite.
+No test was weakened and no result table was rewritten.
 
 ### Finding #1 — missing fit-population provenance accepted silently
 
@@ -82,3 +117,18 @@ being relaxed.
 - **Incremental value over `DA+Sert`.** At ROC-AUC 0.990 for a single raw
   column there is no AUC headroom left, so whether the PCs add anything must be
   judged on Brier / log-loss / continuous R², not AUC.
+- **The DA-only D30 model does not beat one raw column, and this is unresolved
+  rather than merely noted.** Under the DA-only outcome, D30 `phat_DA` alone
+  scores ROC-AUC **0.960** [0.922, 0.986] while the full fitted model —
+  6 free proportions + PC1–10, donor-grouped nested CV over 55 configurations —
+  scores **0.945**. The two are not strictly like-for-like (the benchmark is
+  in-sample with no fitted parameter; the model is out-of-fold), so this is not
+  proof the model is worthless, but it is not evidence it adds anything either.
+  Settling it needs a paired comparison of out-of-fold predictions against the
+  benchmark on Brier / log-loss, which has not been run.
+- **A mis-specified benchmark nearly hid that.** The benchmark set was carried
+  over from the DA+Sert outcome and compared `phat_DA + phat_Sert` (0.886)
+  rather than `phat_DA` (0.960). Against the wrong comparator the model appeared
+  to add ~6 AUC points. Fixed in `e9c0f85`; both rows are now reported, each
+  labelled with the outcome it matches. **A benchmark that does not match the
+  outcome's numerator is not a weaker check, it is a misleading one.**
