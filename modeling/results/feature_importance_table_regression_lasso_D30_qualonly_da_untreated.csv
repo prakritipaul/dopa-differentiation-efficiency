@@ -1,0 +1,8 @@
+feature,univariate_spearman,coefficient,regularized_to_zero,selection_frequency,loco_delta,loco_note,permutation_delta,permutation_note,shap_mean_abs,technical_covariate_eta2,technical_covariate_label
+phat_DA,0.9321,0.1642,False,1.0,0.01,individual,0.1442,grouped (all proportions permuted together),0.1434,0.315,Moderate
+phat_Epen1,-0.6934,-0.0,True,0.0,0.0,individual,0.1442,grouped (all proportions permuted together),0.0,0.133,Low
+phat_FPP,-0.708,-0.0,True,0.0,0.0,individual,0.1442,grouped (all proportions permuted together),0.0,0.211,Moderate
+phat_P_FPP,-0.4942,reference (=1-FPP-NB),,,0.1032,grouped (FPP+NB dropped together),0.1442,grouped (all proportions permuted together),,0.14,Low
+phat_Sert,0.3167,-0.0005,False,0.66,0.0,individual,0.1442,grouped (all proportions permuted together),0.0005,0.057,Low
+phat_U_Neur1,-0.5422,-0.0,True,0.0,0.0,individual,0.1442,grouped (all proportions permuted together),0.0,0.11,Low
+phat_U_Neur2,-0.3211,0.0,True,0.0,0.0,individual,0.1442,grouped (all proportions permuted together),0.0,0.083,Low

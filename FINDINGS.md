@@ -412,3 +412,84 @@ AUC 0.727, well below the maturation-driven numbers. Full detail in
   raises for any non-published variant, because its full-fit columns come from a
   PCA basis fit under the published cohort and mixing bases is a known defect.
 - **No external validation.** 20 donors, one protocol, one study.
+
+## A6. Which features matter — and how it differs from the published analysis
+
+Same method as §2: one-SE config selection, paired per-fold LOCO and
+permutation deltas, full-fit coefficients/SHAP from a PCA fit once on all 136
+qualifying lines (`005 --timepoint {D11,D30} --label-variant da_untreated`),
+pool η² on those same features. Tables:
+`modeling/results/feature_importance_table_*_{D11,D30}_qualonly_da_untreated.csv`.
+
+### Recapitulates the published analysis
+
+**`phat_NB` is still D11's standout composition feature**, with the same sign
+and the same technical cleanliness:
+
+| | published (DA+Sert) | DA-only |
+|---|---|---|
+| `phat_NB` univariate ρ | −0.733 | −0.554 (cls) / −0.610 (reg) |
+| `phat_NB` SHAP | 0.243 | **1.050** (cls) |
+| `phat_NB` pool η² | 0.037 | **0.035** |
+
+More D11 neuroblasts → worse D52 dopaminergic yield, and it remains the only
+strongly predictive feature that is *not* pool-associated. The weaker
+correlation is expected: DA-only is a harder target.
+
+**Pool confounding of the PCs persists**, and in the same severity range
+(η² 0.11–0.83 here, 0.45–0.76 published). **Composition still dominates the
+transcriptome** on permutation importance at both timepoints.
+
+### New
+
+**1. At D30 the transcriptome adds essentially nothing beyond composition.**
+Three of four models select **k = 0 PCs** under the one-SE rule (lasso, ridge,
+logistic_l1; only logistic_l2 keeps 6). Where PCs are kept, they are dwarfed:
+
+| D30, logistic_l2 | permutation Δ |
+|---|---|
+| proportions (grouped) | **0.360** |
+| best single PC (PC1) | 0.018 |
+
+A **20×** gap. This is the feature-level counterpart of the benchmark result in
+§A3 — `phat_DA` alone nearly matches the full model — and it says the same
+thing from the other direction. At D11 the PCs do carry weight (top LOCO Δ
++0.064).
+
+**2. `phat_DA` dominates D30**, as the construct-overlap framing predicts:
+univariate ρ +0.792 (classification) and **+0.932** (regression), SHAP 1.292,
+the largest of any feature at either timepoint.
+
+**3. PC indices rotated between cohorts — concretely, not just in principle.**
+The published PC2 (ρ +0.593, η² 0.764) does **not** correspond to the DA-only
+PC2 (ρ −0.626, η² 0.114). The heavily pool-associated component is now **PC3**
+(η² 0.832). `modeling/README.md` documents that PC2/PC3 are near-tied in
+variance and rotate between fits; this is that caveat materialising. **`PCn` is
+a slot, not a stable biological entity** — do not compare PC indices across
+these tables or against the published ones.
+
+**4. D11's strongest PC under this outcome is also its most pool-confounded
+feature.** `PC3` carries the largest LOCO Δ (+0.064) and SHAP (1.398) in the
+D11 classification table, and η² = **0.832** — more pool-associated than
+anything in the published table. So D11's DA-only performance leans on a
+technically entangled component, and may not transfer across pools. Treat with
+more caution than the published D11 result, not less.
+
+**5. `phat_Sert` flips sign conditionally at D30.** Univariate ρ is **+0.215**,
+but its fitted coefficient is **−0.288**. Positive alone, negative once the
+other types are held fixed — consistent with §A1: Sert is a different lineage,
+and at fixed composition more Sert means fewer cells left to become DA.
+
+### Caveats
+
+The `k = 0` selections mean the grouped-proportions LOCO row compares against an
+**intercept-only** model (no features at all). That is the correct comparison,
+and it is computed rather than skipped, but it is a different kind of baseline
+than the other rows.
+
+SHAP and coefficients come from a single full-fit basis; LOCO and permutation
+average over 256 differently-rotated per-fold bases. For **PC1** that is fine
+(it replicates at r = 0.9995). For the near-tied components the two column
+families do not strictly refer to the same direction — the rows are kept
+per-PC to match the published table's shape, but should be read as *a* PC of
+roughly that rank, not a fixed axis.

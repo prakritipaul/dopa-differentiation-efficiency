@@ -52,6 +52,15 @@ DONOR_RE = re.compile(r"^(HPSI\d+i)-")
 OUT_DIR = Path(__file__).parent / "metadata_eda"
 QUALIFYING_COMBOS_CSV = OUT_DIR / "cohort/qualifying_cell_line_pool_min10_per_timepoint.csv"
 
+# This script is the FULL-FIT (nothing held out) counterpart of
+# run_feature_extraction.py's per-fold PCA, and modeling/feature_importance.py
+# puts columns from both into one table. So the two MUST agree on the h5 file,
+# the cohort, and the excluded depth-outlier pool. Both therefore resolve from
+# the same sources the fold extractor uses -- features.TIMEPOINT_FILES,
+# features.DEPTH_OUTLIER_POOLS, folds.VARIANTS -- rather than being restated
+# here, because a second copy is free to drift and nothing would raise.
+TIMEPOINT_OUT_PREFIX = {"D11": "d11", "D30": "d30"}
+
 N_HVG = 2000
 N_HVG_BINS = 20
 N_PCS = 10
@@ -66,8 +75,8 @@ def read_obs_categorical(f: h5py.File, column: str) -> pd.Categorical:
     return pd.Categorical.from_codes(codes, categories=categories)
 
 
-def load_line_pool() -> pd.DataFrame:
-    with h5py.File(DAY11_FILE, "r") as f:
+def load_line_pool(h5_file: str = DAY11_FILE) -> pd.DataFrame:
+    with h5py.File(h5_file, "r") as f:
         cell_line = read_obs_categorical(f, "donor_id")
         pool = read_obs_categorical(f, "pool_id")
     return pd.DataFrame({"cell_line": cell_line, "pool": pool})
@@ -195,7 +204,7 @@ def collapse_to_line_level(pc_df: pd.DataFrame, pc_cols: list[str], qualifying: 
     return line_means.reset_index()
 
 
-def plot_scree(explained_variance_ratio: np.ndarray, out_suffix: str = "") -> None:
+def plot_scree(explained_variance_ratio: np.ndarray, out_suffix: str = "", prefix: str = "d11") -> None:
     fig, ax = plt.subplots(figsize=(6, 4))
     x = np.arange(1, len(explained_variance_ratio) + 1)
     ax.plot(x, explained_variance_ratio, marker="o")
@@ -204,22 +213,23 @@ def plot_scree(explained_variance_ratio: np.ndarray, out_suffix: str = "") -> No
     ax.set_title("D11 PCA scree plot")
     ax.set_xticks(x)
     fig.tight_layout()
-    fig.savefig(OUT_DIR / f"plots/plot_d11_pca_scree{out_suffix}.png", dpi=150)
+    fig.savefig(OUT_DIR / f"plots/plot_{prefix}_pca_scree{out_suffix}.png", dpi=150)
     plt.close(fig)
 
 
-def plot_scatter(line_level: pd.DataFrame, out_suffix: str = "") -> None:
+def plot_scatter(line_level: pd.DataFrame, out_suffix: str = "", prefix: str = "d11") -> None:
     fig, ax = plt.subplots(figsize=(6, 5))
     ax.scatter(line_level["PC1"], line_level["PC2"], s=15, alpha=0.7)
     ax.set_xlabel("PC1 (line-level mean)")
     ax.set_ylabel("PC2 (line-level mean)")
     ax.set_title("D11 PCA: per-cell-line PC1 vs PC2")
     fig.tight_layout()
-    fig.savefig(OUT_DIR / f"plots/plot_d11_pca_scatter{out_suffix}.png", dpi=150)
+    fig.savefig(OUT_DIR / f"plots/plot_{prefix}_pca_scatter{out_suffix}.png", dpi=150)
     plt.close(fig)
 
 
-def main(restrict_fit_to_qualifying: bool = False, out_suffix: str = "") -> None:
+def main(restrict_fit_to_qualifying: bool = False, out_suffix: str = "",
+         timepoint: str = "D11", label_variant: str | None = None) -> None:
     """restrict_fit_to_qualifying: when True the HVG/PCA fit additionally
     excludes cells outside the qualifying (cell_line, pool) combos -- the
     study population. Default False reproduces the original global fit,
@@ -232,34 +242,48 @@ def main(restrict_fit_to_qualifying: bool = False, out_suffix: str = "") -> None
     so if only one of the two is restricted, a single importance table
     ends up describing two different PCA bases.
 
+    timepoint: which h5 to read and which depth-outlier pool to exclude. The
+    exclusion is NOT the same pool at both timepoints -- pool11 at D11, pool5
+    at D30 -- and hardcoding D11's rule here would silently fit the D30 basis
+    on its shallowest pool while excluding its deepest.
+
+    label_variant: whose cohort defines "qualifying". Defaults to the
+    published cohort when None, preserving the original behaviour.
+
     Pass a distinct out_suffix so the variant's outputs sit beside the
     originals instead of overwriting them."""
-    OUT_DIR.mkdir(exist_ok=True)
+    from modeling.features import DEPTH_OUTLIER_POOLS, TIMEPOINT_FILES
+    from modeling.folds import get_variant
 
-    line_pool = load_line_pool()
-    fit_mask = (line_pool["pool"] != "pool11").to_numpy()
+    OUT_DIR.mkdir(exist_ok=True)
+    h5_file = TIMEPOINT_FILES[timepoint]
+    (excluded_pool,) = DEPTH_OUTLIER_POOLS[timepoint]
+    prefix = TIMEPOINT_OUT_PREFIX[timepoint]
+    combos_csv = QUALIFYING_COMBOS_CSV if label_variant is None else get_variant(label_variant).cohort_csv
+
+    line_pool = load_line_pool(h5_file)
+    fit_mask = (line_pool["pool"] != excluded_pool).to_numpy()
     if restrict_fit_to_qualifying:
-        qual = pd.read_csv(QUALIFYING_COMBOS_CSV)[["cell_line", "pool"]]
+        qual = pd.read_csv(combos_csv)[["cell_line", "pool"]]
         in_combos = pd.MultiIndex.from_arrays(
             [line_pool["cell_line"], line_pool["pool"]]
         ).isin(pd.MultiIndex.from_frame(qual))
         fit_mask = fit_mask & np.asarray(in_combos)
     print(
-        f"Fitting HVGs/PCA on {fit_mask.sum()} of {len(fit_mask)} D11 cells "
-        f"(excluding pool11 -- a severe sequencing-depth batch outlier: "
-        f"~1,900 mean UMI/cell vs ~10,000-18,000 in every other pool"
-        + (", and restricted to qualifying (cell_line, pool) combos" if restrict_fit_to_qualifying else "")
-        + f"). Excluded cells are still projected into the resulting PCA space."
+        f"Fitting HVGs/PCA on {fit_mask.sum()} of {len(fit_mask)} {timepoint} cells "
+        f"(excluding {excluded_pool} -- the sequencing-depth outlier at this timepoint"
+        + (f", and restricted to {combos_csv.name}" if restrict_fit_to_qualifying else "")
+        + "). Excluded cells are still projected into the resulting PCA space."
     )
 
     print("Pass 1/2: computing per-gene mean/variance (fit cells only)...")
-    mean, var, n_fit_cells = compute_gene_stats(DAY11_FILE, fit_mask=fit_mask)
+    mean, var, n_fit_cells = compute_gene_stats(h5_file, fit_mask=fit_mask)
     print(f"{n_fit_cells} fit cells, {len(mean)} genes.")
 
     hvg_idx = select_hvgs(mean, var, n_top=N_HVG)
     print(f"Selected {len(hvg_idx)} HVGs.")
 
-    with h5py.File(DAY11_FILE, "r") as f:
+    with h5py.File(h5_file, "r") as f:
         gene_symbols = np.array([g.decode() for g in f["var/index"][:]])
 
     hvg_table = pd.DataFrame(
@@ -270,10 +294,10 @@ def main(restrict_fit_to_qualifying: bool = False, out_suffix: str = "") -> None
             "var": var[hvg_idx],
         }
     )
-    hvg_table.to_csv(OUT_DIR / f"pca/d11_hvg_genes{out_suffix}.csv", index=False)
+    hvg_table.to_csv(OUT_DIR / f"pca/{prefix}_hvg_genes{out_suffix}.csv", index=False)
 
     print("Pass 2/2: extracting HVG-only expression matrix (all D11 cells)...")
-    X_hvg = extract_hvg_matrix(DAY11_FILE, hvg_idx)
+    X_hvg = extract_hvg_matrix(h5_file, hvg_idx)
 
     print(f"Running PCA (n_components={N_PCS}, fit on non-pool11 cells, transform all)...")
     pcs, explained_variance_ratio, pca_model = run_pca(
@@ -301,32 +325,32 @@ def main(restrict_fit_to_qualifying: bool = False, out_suffix: str = "") -> None
     loadings_long = loadings_long.sort_values(
         ["PC", "abs_loading"], ascending=[True, False]
     ).reset_index(drop=True)
-    loadings_long.to_csv(OUT_DIR / f"pca/d11_pca_gene_loadings{out_suffix}.csv", index=False)
+    loadings_long.to_csv(OUT_DIR / f"pca/{prefix}_pca_gene_loadings{out_suffix}.csv", index=False)
     print(f"Saved gene loadings for {N_PCS} PCs x {len(hvg_idx)} HVGs.")
 
     pc_cols = [f"PC{i}" for i in range(1, N_PCS + 1)]
     variance_table = pd.DataFrame({"PC": pc_cols, "explained_variance_ratio": explained_variance_ratio})
-    variance_table.to_csv(OUT_DIR / f"pca/d11_pca_variance_explained{out_suffix}.csv", index=False)
+    variance_table.to_csv(OUT_DIR / f"pca/{prefix}_pca_variance_explained{out_suffix}.csv", index=False)
     print(variance_table)
 
     pc_df = pd.concat([line_pool, pd.DataFrame(pcs, columns=pc_cols)], axis=1)
 
-    qualifying = pd.read_csv(QUALIFYING_COMBOS_CSV)[["cell_line", "pool"]]
+    qualifying = pd.read_csv(combos_csv)[["cell_line", "pool"]]
 
     # Per-cell PCs, restricted to qualifying combos -- reused by
     # 006_d11_pca_variance_vs_se.py to check these features the same way
     # 004 checks cell type proportions (variance across lines vs. SE).
     pc_df_qualifying = pc_df.merge(qualifying, on=["cell_line", "pool"], how="inner")
-    pc_df_qualifying.to_csv(OUT_DIR / f"pca/d11_pca_coords_per_cell_qualifying{out_suffix}.csv", index=False)
+    pc_df_qualifying.to_csv(OUT_DIR / f"pca/{prefix}_pca_coords_per_cell_qualifying{out_suffix}.csv", index=False)
 
     line_level = collapse_to_line_level(pc_df, pc_cols, qualifying)
-    line_level.to_csv(OUT_DIR / f"pca/d11_pca_coords_per_line{out_suffix}.csv", index=False)
+    line_level.to_csv(OUT_DIR / f"pca/{prefix}_pca_coords_per_line{out_suffix}.csv", index=False)
 
     print(f"\n{line_level['cell_line'].nunique()} cell lines in the final PCA feature table.")
     print(line_level.head())
 
-    plot_scree(explained_variance_ratio, out_suffix)
-    plot_scatter(line_level, out_suffix)
+    plot_scree(explained_variance_ratio, out_suffix, prefix)
+    plot_scatter(line_level, out_suffix, prefix)
     print(f"\nSaved CSVs and plots to {OUT_DIR}")
 
 
@@ -337,5 +361,11 @@ if __name__ == "__main__":
     parser.add_argument("--restrict-to-qualifying", action="store_true",
                         help="fit HVGs/PCA only on cells in qualifying (cell_line, pool) combos")
     parser.add_argument("--suffix", default="", help="suffix for all output filenames")
+    parser.add_argument("--timepoint", default="D11", choices=["D11", "D30"],
+                        help="which h5 to fit; also picks the depth-outlier pool to exclude "
+                             "(pool11 at D11, pool5 at D30) and the d11_/d30_ output prefix")
+    parser.add_argument("--label-variant", default=None,
+                        help="whose cohort defines 'qualifying'; default is the published cohort")
     args = parser.parse_args()
-    main(restrict_fit_to_qualifying=args.restrict_to_qualifying, out_suffix=args.suffix)
+    main(restrict_fit_to_qualifying=args.restrict_to_qualifying, out_suffix=args.suffix,
+         timepoint=args.timepoint, label_variant=args.label_variant)

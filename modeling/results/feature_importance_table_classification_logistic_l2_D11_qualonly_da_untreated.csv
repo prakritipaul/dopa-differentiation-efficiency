@@ -1,0 +1,8 @@
+feature,univariate_spearman,coefficient,regularized_to_zero,selection_frequency,loco_delta,loco_note,permutation_delta,permutation_note,shap_mean_abs,technical_covariate_eta2,technical_covariate_label
+phat_FPP,0.1433,0.0898,False,1.0,-0.0057,individual,0.0767,grouped (all proportions permuted together),0.0651,0.761,High (pool-associated)
+phat_NB,-0.5536,-1.3496,False,1.0,0.0136,individual,0.0767,grouped (all proportions permuted together),1.0496,0.035,Low
+phat_P_FPP,0.2378,reference (=1-FPP-NB),,,0.0094,grouped (FPP+NB dropped together),0.0767,grouped (all proportions permuted together),,0.658,High (pool-associated)
+PC1,0.4517,0.6106,False,1.0,-0.0035,individual,0.0144,individual,0.4661,0.472,Moderate
+PC2,-0.6261,-0.8779,False,1.0,-0.0024,individual,0.0684,individual,0.7178,0.114,Low
+PC3,0.614,1.7332,False,1.0,0.0637,individual,0.1261,individual,1.3981,0.832,High (pool-associated)
+PC4,0.2416,-0.4254,False,1.0,0.0035,individual,0.0107,individual,0.3411,0.506,High (pool-associated)
