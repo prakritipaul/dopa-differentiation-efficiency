@@ -67,7 +67,16 @@ SEED = 0
 # their mutual correlation is reported below so that is not mistaken for two
 # independent findings.
 BENCHMARKS = {
-    "DA+Sert (already arrived)": (TARGET_LIKE, None, +1),
+    # MATCH THE NUMERATOR TO THE OUTCOME. "Already arrived" only means what it
+    # says when the cells counted here are the cells counted in the outcome.
+    # Against the published (DA+Sert)/all outcome that is phat_DA + phat_Sert;
+    # against the DA/all outcome it is phat_DA ALONE, and using the pair
+    # instead understates the ceiling -- D30 phat_DA tracks D52 DA/all at
+    # Spearman +0.93 while phat_DA+phat_Sert manages only +0.80, because Sert
+    # is a different lineage that does not become DA. Both are reported so the
+    # mismatched one cannot be quoted by accident.
+    "DA alone (already arrived, matches a DA-only outcome)": (["phat_DA"], None, +1),
+    "DA+Sert (already arrived, matches a DA+Sert outcome)": (TARGET_LIKE, None, +1),
     "FPP+P_FPP (still undecided)": (PROGENITOR, None, -1),
     # The progenitor-balance question: OF THE CELLS THAT HAVE NOT BECOME
     # TARGET-LIKE, what share are still competent progenitors rather than
