@@ -117,8 +117,14 @@ being relaxed.
 - **Incremental value over `DA+Sert`.** At ROC-AUC 0.990 for a single raw
   column there is no AUC headroom left, so whether the PCs add anything must be
   judged on Brier / log-loss / continuous R², not AUC.
-- **The DA-only D30 model does not beat one raw column, and this is unresolved
-  rather than merely noted.** Under the DA-only outcome, D30 `phat_DA` alone
+- **RESOLVED.** The DA-only D30 model vs one raw column was tested properly in
+  `modeling/test_incremental_value.py` (both feature sets, identical
+  donor-grouped folds, nested inner selection on training lines only, paired
+  per repeat). The answer is split and both halves are unanimous across all 10
+  repeats: `phat_DA` alone RANKS better (ROC-AUC 0.9563 vs 0.9393; full better
+  in 0/10), while the full model is far better CALIBRATED (log loss 0.328 vs
+  0.571, Brier 0.093 vs 0.190; full better in 10/10). Original note follows.
+- **The DA-only D30 model does not beat one raw column on ranking.** Under the DA-only outcome, D30 `phat_DA` alone
   scores ROC-AUC **0.960** [0.922, 0.986] while the full fitted model —
   6 free proportions + PC1–10, donor-grouped nested CV over 55 configurations —
   scores **0.945**. The two are not strictly like-for-like (the benchmark is

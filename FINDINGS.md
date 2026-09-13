@@ -361,11 +361,31 @@ resamples:
 
 **The full D30 model scores 0.945. One raw D30 column scores 0.960.**
 
-The two are not strictly like-for-like — the benchmark is in-sample with nothing
-to overfit, the model is out-of-fold — so this is not proof the model is
-worthless. But it is **not evidence that it adds anything either**, and that
-question is open: settling it needs a paired out-of-fold comparison against the
-benchmark on Brier / log-loss, which has not been run.
+Those two are not like-for-like — the benchmark is in-sample, the model
+out-of-fold — so the gap above settles nothing on its own. **It has since been
+tested properly** (`modeling/test_incremental_value.py`): both feature sets put
+through identical donor-grouped folds, nested inner selection on training lines
+only, differences paired per repeat.
+
+| metric | `phat_DA` alone | full model | full better in |
+|---|---|---|---|
+| ROC-AUC | **0.9563** ± 0.0018 | 0.9393 ± 0.0080 | **0 / 10 repeats** |
+| log loss | 0.5707 | **0.3276** ± 0.0311 | **10 / 10 repeats** |
+| Brier | 0.1897 | **0.0930** ± 0.0052 | **10 / 10 repeats** |
+| accuracy | 0.8676 | 0.8750 | 6 / 10 |
+
+**The answer is split, and both halves are unanimous across repeats.**
+`phat_DA` alone *ranks* lines better — by a small margin (−0.017 AUC) but in
+every single repeat. The full model is *calibrated* far better — log loss
+−0.243, Brier −0.097, again in every repeat.
+
+So: **to rank lines, one raw D30 column beats the entire model. To get
+trustworthy probabilities, the model earns its keep.** This is precisely why
+AUC could not settle the question — at 0.95 it is saturated and speaks only to
+ordering.
+
+Applies to D30 only: D11 has no `phat_DA` (its three annotated types are FPP,
+NB, P_FPP), so there is no analogous single-column comparator there.
 
 **A mis-specified benchmark nearly hid this.** The comparator was carried over
 from the previous outcome and summed `phat_DA + phat_Sert` (0.886) rather than
