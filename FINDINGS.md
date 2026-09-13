@@ -280,3 +280,135 @@ question. The gain in accuracy is real but is bought with 11 days.
    <https://pmc.ncbi.nlm.nih.gov/articles/PMC6909514/> — pooled/multiplexed
    design context: pooling controls *within-pool* batch variation but
    leaves pool-to-pool structure, which is what §3 measures.
+
+---
+
+# Addendum: a dopaminergic-only outcome, and D30 → D52
+
+Everything above uses the published outcome — `(DA + Sert) / all D52 cells`,
+counting every D52 cell. This addendum covers a second analysis with a
+**different target**, run alongside rather than replacing it. The published
+results are unchanged and every file backing them is byte-identical.
+
+Results live in `modeling/results/*_da_untreated.csv`; that suffix means
+**`DA / all D52 cells`, untreated cells only**. See
+[`modeling/results/README.md`](modeling/results/README.md) for the file-by-file
+guide.
+
+## A1. Why a different outcome
+
+**The published outcome counts rotenone-treated cells.** D52 — and only D52 —
+contains 219,238 `ROT` cells against 303,856 `NONE`, interleaved so that *every*
+qualifying `(cell_line, pool)` combo contains both. Rotenone inhibits
+mitochondrial complex I and preferentially damages dopaminergic neurons, the
+cells in the numerator. Checked against the authors' own notebook: they apply
+only a ≥10-cell threshold and never filter on treatment. **This is therefore a
+deliberate divergence from the published definition, not a bug fix.**
+
+**It also merges two lineages.** DA and Sert are both floor-plate-derived but
+differ by rostro-caudal position, and they track *separately*:
+
+| D30 predictor | → D52 `DA/all` |
+|---|---|
+| `phat_DA` | ρ = **+0.932** |
+| `phat_Sert` | Pearson **+0.057** |
+
+D30 Sert says essentially nothing about D52 DA. Summing them averages over a
+real biological axis. Consistent with this, `DA/(DA+Sert)` spreads almost
+uniformly 0–1 across lines — rostro-caudal identity looks line-intrinsic and
+fixed before D30.
+
+**Cost of the change:** excluding ROT cells drops 2 lines below the ≥10-cell
+threshold (`HPSI0115i-melw_1`, `HPSI0115i-qecv_2` — both pool5, both reduced to
+6 and 8 untreated D52 cells), giving **136 lines, 157 combos, 20 donors**.
+Donor count is unchanged, so donor-grouped CV keeps its structure.
+
+## A2. Results
+
+Identical design to the published work: donor-grouped 5-fold × 10 repeats,
+nested tuning, same model grids, same pre-registered headline. Both timepoints
+were scored on fold tables verified to agree on **every** fold's train/test
+membership (34,816 rows compared), so the comparison is paired and any
+difference is attributable to the timepoint alone.
+
+| | **D11 → D52** | **D30 → D52** |
+|---|---|---|
+| ridge — R² | 0.503 ± 0.015 | **0.802 ± 0.009** |
+| ridge — MAE / RMSE | 0.099 / 0.134 | 0.061 / 0.085 |
+| logistic_l2 — ROC-AUC | 0.906 ± 0.008 | **0.945 ± 0.008** |
+| logistic_l2 — PR-AUC | 0.874 | 0.906 |
+| logistic_l2 — balanced acc | 0.834 | 0.877 |
+| logistic_l2 — Brier | 0.125 | 0.090 |
+
+**D11's DA-only numbers are lower than its published DA+Sert ones** (R² 0.503 vs
+0.653, AUC 0.906 vs 0.947). That is **not a regression** — it is a harder
+target. `DA+Sert` is bimodal with a genuine gap at 0.2, so the threshold
+separates two clumps; `DA/all` is unimodal with no gap, so the same threshold
+cuts through a dense region. Different question, different difficulty. The two
+families are not comparable and should never be differenced.
+
+## A3. ⚠️ The D30 model does not beat a single raw column
+
+The fit-free reference lines, donor-level bootstrap over 20 donors, 2,000
+resamples:
+
+| D30 benchmark (no model, no fitted parameter) | ρ | ROC-AUC |
+|---|---|---|
+| **`phat_DA` alone** | +0.932 | **0.960** [0.922–0.986] |
+| `phat_DA + phat_Sert` | +0.799 | 0.886 [0.834–0.941] |
+| `phat_FPP + phat_P_FPP` (undecided) | −0.788 | 0.883 |
+| progenitor balance (share of non-target) | +0.452 | 0.727 |
+
+**The full D30 model scores 0.945. One raw D30 column scores 0.960.**
+
+The two are not strictly like-for-like — the benchmark is in-sample with nothing
+to overfit, the model is out-of-fold — so this is not proof the model is
+worthless. But it is **not evidence that it adds anything either**, and that
+question is open: settling it needs a paired out-of-fold comparison against the
+benchmark on Brier / log-loss, which has not been run.
+
+**A mis-specified benchmark nearly hid this.** The comparator was carried over
+from the previous outcome and summed `phat_DA + phat_Sert` (0.886) rather than
+`phat_DA` (0.960). Against the wrong reference the model appeared to add ~6 AUC
+points. **A benchmark whose numerator does not match the outcome is not a weaker
+check — it is a misleading one.**
+
+## A4. What D30 can and cannot claim
+
+D30's stronger numbers are **expected and largely definitional**. Its annotation
+set already contains DA cells, so the outcome partly exists in the predictors.
+This is **construct overlap, not leakage**: D30 and D52 are separate cells from
+separate harvests, D30 precedes D52, and no D52 information enters the features.
+
+The defensible claim is *how much of the D52 phenotype is already established by
+D30* — not that something was predicted. Marker analysis over all 250,923 D30
+cells splits the seven types three ways:
+
+- **already arrived** — DA, Sert (48% of cells)
+- **still undecided** — FPP, P_FPP (31%): SOX2⁺/HES1⁺/VIM-high progenitors, not
+  yet neuronal, P_FPP still cycling
+- **off-target, terminal** — Epen1 (ciliated/choroid-plexus-like, TTR 134.7),
+  U_Neur1/2 (post-mitotic, no lineage markers) (20%)
+
+So ~31% of D30 cells genuinely have not decided, and what they become is real
+prediction — but the progenitor-balance benchmark that isolates it reaches only
+AUC 0.727, well below the maturation-driven numbers. Full detail in
+[`modeling/docs/D30_celltype_interpretation.md`](modeling/docs/D30_celltype_interpretation.md).
+
+## A5. Caveats specific to this addendum
+
+- **Not comparable to the published family.** Different outcome, different D52
+  cells, different cohort.
+- **`pool5` annotation bias is unaddressed.** Its ~10× D30 sequencing-depth
+  deficit may have biased D30 *cell-type annotation* itself; excluding it from
+  HVG/PCA fitting does nothing to correct biased labels. It holds 18 of 157
+  combos.
+- **Shared annotation machinery unverified.** Whether D30 and D52 types were
+  annotated independently is unknown. Not leakage either way, but correlated
+  labelling error would inflate the apparent D30→D52 continuity.
+- **The 0.2 threshold is inherited**, and means something different here. Its
+  fold-level class balance was not profiled.
+- **Feature importance was not computed** for this family — `feature_importance.py`
+  raises for any non-published variant, because its full-fit columns come from a
+  PCA basis fit under the published cohort and mixing bases is a known defect.
+- **No external validation.** 20 donors, one protocol, one study.

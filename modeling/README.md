@@ -1139,3 +1139,132 @@ single-config coefficient table is one draw from a wide distribution.
 | importance | `results/feature_importance_table_{task}_{model}.csv` | `results/..._{model}_qualonly.csv` |
 | fold features | `fold_data/fold_features_D11_full.csv` | `fold_data/fold_features_D11_qualonly.csv` |
 | global PCA basis | `metadata_eda/pca/d11_pca_coords_per_line.csv` | `..._qualonly.csv` |
+
+---
+
+# Label variants: running an alternative outcome
+
+Added when a second outcome — `DA / all D52 cells`, untreated cells only — was
+run alongside the published `(DA + Sert) / all D52 cells`. Results:
+`modeling/results/*_da_untreated.csv`, documented file-by-file in
+[`results/README.md`](results/README.md). Findings: [`../FINDINGS.md`](../FINDINGS.md)
+"Addendum".
+
+## Why a registry rather than threaded paths
+
+`folds.py` was the single place that resolved the cohort and label, and the only
+link in the chain without a variant parameter. The failure mode it guards
+against is **not** "someone forgot to pass an argument" — it is *one of four
+coupled values coming from a different variant than the other three*. Cohort
+file, label file, threshold and expected line count are only meaningful
+together; a label computed on one cohort, thresholded at another's cut-off and
+checked against a third's line count is a silently wrong analysis that raises
+nothing.
+
+```python
+@dataclass(frozen=True)
+class LabelVariant:
+    suffix: str          # applied by CODE when naming artifacts, never typed
+    cohort_csv: Path
+    label_csv: Path
+    threshold: float
+    n_lines: int
+    description: str
+
+VARIANTS = {"published": ..., "da_untreated": ...}   # dict key IS the name
+```
+
+Bundling them makes the mismatched combination unconstructible. Three
+consequences worth keeping:
+
+**No internal default.** `load_lines_with_label(variant)` requires the argument.
+A default would let a call site that was never updated fall back to the
+published cohort while the rest of the run used another — and the existing tests
+would still pass, because they only ever exercise the default. "Existing tests
+still pass" would then mean "the new branch was never exercised", not "the
+refactor is safe". CLI entry points default to `"published"`, where the choice
+is visible. Making it required immediately surfaced all 7 call sites.
+
+**Duplicated cohort constants deleted.** `run_feature_extraction.py` held a
+*second* hardcoded copy of the cohort path, independent of `folds.py`'s, and it
+selected which combos features were computed on. The untreated cohort is 157
+combos against 159, so the two could have disagreed silently. Removing it makes
+a missed call site fail at import rather than in a results table.
+
+**The variant suffix is appended by code, never typed.** An operator cannot aim
+a new-label artifact at a published path, because they never get the chance to
+write the suffix.
+
+## Provenance: `label_variant` and `fit_population`
+
+Every fold-feature row, results row and nested-selection row records which
+variant produced it, and resuming across a differing value raises.
+
+**An absent value is treated as UNKNOWN, not compatible.** This is the stricter
+of the two rules in the file, and deliberately so: a label change is invisible
+in the fold-features *filename*, which is all the earlier guard recorded. A
+table predating the column could have been built under either variant, so
+resuming onto it can produce exactly the mixed basis the check exists to
+prevent. Consequence: the committed published tables cannot be resumed. They are
+complete and never need to be; `resume=False` is the documented escape.
+
+## Adding a variant
+
+1. Build the cohort if it differs — `003_qualifying_cell_lines.py --untreated-only --suffix …`
+2. Build the label — `009_d52_outcome_label.py --da-only --cohort-suffix … --suffix …`.
+   `--cohort-suffix` is separate from `--suffix` because the cohort and the label
+   are **different axes**: the cohort depends on cell counts, not on which cell
+   types define the outcome, so `_da_untreated` labels sit on the `_untreated`
+   cohort. No single suffix names both.
+3. Register it in `folds.VARIANTS`. The parametrized test in `tests/test_folds.py`
+   then checks the new bundle is self-consistent automatically.
+4. Extract per timepoint — `run_feature_extraction --label-variant … --timepoint …`
+5. Verify — `python -m modeling.verify_fold_features D11 --paired-with D30`
+6. Score — `run_variant --label-variant … --timepoint …`
+
+## `verify_fold_features.py`
+
+A hard gate between an extraction finishing and anything running on its output.
+Extraction takes ~3 hours and its failure mode does not raise: it emits a
+plausible table that is short a fold, missing a line, or carrying stale
+provenance. Expectations are **derived from the variant's own cohort** rather
+than hardcoded — the LOCO fold count comes from the cohort's line count, and the
+excluded depth-outlier pool is read from `features.DEPTH_OUTLIER_POOLS` rather
+than restated, since a second copy could drift from the real rule.
+
+`--paired-with` compares two timepoints' **feature tables** on per-fold
+train/test membership. That is stronger than comparing the fold-assignment file,
+and much stronger than trusting the message printed during extraction: a log
+line is not a verification artifact, and it would not catch features derived
+from the right assignments landing in the wrong folds.
+
+## Resume integrity
+
+A fold counts as complete only on **exact key-set equality** against the
+variant's cohort — one row per expected `(cell_line, pool)`, no extras, no nulls
+or non-finite values. A row *count* is not the contract: a fold missing one
+expected combo and carrying one unexpected one has the right number of distinct
+keys and would pass a cardinality check while describing the wrong population.
+
+Truncation is judged in one place. `_read_resumable` handles only the case that
+makes a file unreadable (a final row with too *many* fields, which raises); a
+row with too *few* fields is silently NaN-padded by the parser and is
+deliberately **kept**, so that `complete_folds` rejects the whole fold. Dropping
+null-bearing rows in the reader would also discard a genuinely missing value and
+hide whatever produced it.
+
+## What deliberately does NOT support variants
+
+`feature_importance.py` raises `NotImplementedError` for anything other than
+`published`, **before reading any data**. Its full-fit columns (coefficient,
+SHAP, univariate, technical covariate) come from a global PCA basis fit under
+the published cohort, while its fold-level columns (LOCO, permutation, selection
+frequency) would come from the new variant — byte-for-byte the mixed-basis
+defect already recorded in this file. Correct support requires re-running
+`005_d11_pca_features.py` against the other cohort first. It is not partially
+threaded: that would imply support it does not have.
+
+`010_d52_label_technical_covariates.py` independently re-derives the label
+instead of reading the CSV, so its outputs still describe the published outcome
+only. Worth revisiting — dropping rotenone cells changes the per-combo depth
+distribution, so "is the new label pool/depth-confounded?" is genuinely open.
