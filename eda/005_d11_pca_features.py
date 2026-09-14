@@ -47,7 +47,11 @@ import pandas as pd
 import scipy.sparse as sp
 from sklearn.decomposition import PCA
 
-DAY11_FILE = "/Users/prakritipaul/Documents/2021_jerber/day11.h5"
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from data_paths import data_file  # noqa: E402  (repo root, added above)
+
+DAY11_FILE = data_file("D11")
 DONOR_RE = re.compile(r"^(HPSI\d+i)-")
 OUT_DIR = Path(__file__).parent.parent / "metadata_eda"
 QUALIFYING_COMBOS_CSV = OUT_DIR / "cohort/qualifying_cell_line_pool_min10_per_timepoint.csv"

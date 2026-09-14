@@ -5,17 +5,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project status
 
 Predicting D52 dopaminergic differentiation efficiency from D11 single-cell
-features across 138 iPSC lines (Jerber et al. 2021). See `README.md` for the
+features across 136 iPSC lines (Jerber et al. 2021). Headline outcome is
+DA/all D52 cells; the earlier DA+Sert analysis is retained as an appendix. See `README.md` for the
 overview, `FINDINGS.md` for results, `modeling/README.md` for methods.
 
-Pipeline lives in `modeling/`; numbered `0NN_*.py` scripts are the EDA phase
-that produced `metadata_eda/`. Test suite: `uv run pytest modeling/ -m "not slow"`.
+Pipeline lives in `modeling/`; numbered `0NN_*.py` scripts in `eda/` are the
+EDA phase that produced `metadata_eda/`. Data paths resolve from
+`data_paths.py` via `JERBER_DATA_DIR`. Test suite: `uv run pytest modeling/ -m "not slow"`.
 
 ## Commands
 
-The project uses [uv](https://docs.astral.sh/uv/) for dependency management and packaging (build backend: `uv_build`).
+The project uses [uv](https://docs.astral.sh/uv/) for dependency management. It is
+not a packaged library -- there is no build backend and no console script; run
+things with `uv run`.
 
-- Run the CLI entry point: `uv run pluricon-prototype`
 - Run any script/module in the project's environment: `uv run <command>`
 - Add a dependency: `uv add <package>`
 - Sync the environment: `uv sync`
@@ -26,7 +29,8 @@ Python version is pinned via `.python-version` to 3.11.
 
 - `modeling/` — the pipeline (see `modeling/README.md` for the subdirectory layout).
 - `metadata_eda/` — EDA outputs, organised into `cohort/ pca/ proportions/ qc/ technical/ plots/`.
-- `0NN_*.py` — numbered EDA scripts, run in order. Not covered by tests (they stream multi-GB h5 files); their output paths are checked statically in `modeling/tests/test_imports.py`.
+- `eda/0NN_*.py` — numbered EDA scripts, run in order. Not covered by tests (they stream multi-GB h5 files); their output paths are checked statically in `modeling/tests/test_imports.py`.
+- `data_paths.py` — single home for the h5 locations, overridable with `JERBER_DATA_DIR`.
 
 ## Planning workflow: get Codex's second opinion
 

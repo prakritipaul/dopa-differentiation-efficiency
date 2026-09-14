@@ -19,10 +19,14 @@ from pathlib import Path
 import h5py
 import pandas as pd
 
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from data_paths import data_file  # noqa: E402  (repo root, added above)
+
 DATA_FILES = [
-    "/Users/prakritipaul/Documents/2021_jerber/day11.h5",
-    "/Users/prakritipaul/Documents/2021_jerber/day30.h5",
-    "/Users/prakritipaul/Documents/2021_jerber/day52.h5",
+    data_file("D11"),
+    data_file("D30"),
+    data_file("D52"),
 ]
 
 DONOR_RE = re.compile(r"^(HPSI\d+i)-")

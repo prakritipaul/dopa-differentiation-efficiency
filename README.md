@@ -1,4 +1,4 @@
-# pluricon-prototype
+# dopa-differentiation-efficiency
 
 **Predicting day-52 dopaminergic neuron yield from earlier single-cell
 snapshots**, across 136 iPSC lines.
@@ -150,14 +150,26 @@ tools/            reference-PDF builder
 
 ```bash
 uv sync
-uv run pytest modeling/ -q      # full suite — runs without the expression data
+uv run pytest modeling/ -q      # passes on a fresh clone, no data needed
 ```
 
 The expression files (`day11.h5`, `day30.h5`, `day52.h5`) are multi-GB and not
-in the repo. **You do not need them to verify the code**: the suite builds a
+in the repo. **You do not need them to verify the code.** The suite builds a
 miniature dataset in the same on-disk shape and drives the real pipeline over it
-in ~3 seconds. To run on real data, set the paths in `modeling/features.py` —
-commands in [`modeling/README.md`](modeling/README.md).
+in ~3 seconds. The two tests that genuinely require the real files are marked
+`requires_data` and skip themselves when the files are absent — so a fresh
+clone gets a green run, and the same tests still execute on a machine that has
+the data.
+
+To run on the real data, point one environment variable at the directory
+holding `day11.h5`, `day30.h5` and `day52.h5` — no source edits:
+
+```bash
+export JERBER_DATA_DIR=/path/to/your/data
+```
+
+Data: [E-MTAB-10018](https://www.ebi.ac.uk/biostudies/arrayexpress/studies/E-MTAB-10018).
+Pipeline commands in [`modeling/README.md`](modeling/README.md).
 
 Python 3.11, [uv](https://docs.astral.sh/uv/).
 

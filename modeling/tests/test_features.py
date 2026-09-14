@@ -25,6 +25,7 @@ from modeling.features import compute_proportion_features, load_cell_metadata
 REPO_ROOT = Path(__file__).parent.parent.parent
 
 
+@pytest.mark.requires_data
 def test_compute_proportion_features_matches_known_values():
     meta = load_cell_metadata("D11")
     qualifying = pd.read_csv(REPO_ROOT / "metadata_eda" / "cohort/qualifying_cell_line_pool_min10_per_timepoint.csv")[
@@ -44,6 +45,7 @@ def test_compute_proportion_features_matches_known_values():
 
 
 @pytest.mark.slow
+@pytest.mark.requires_data
 def test_integration_small_extraction():
     from modeling.run_feature_extraction import main
 
