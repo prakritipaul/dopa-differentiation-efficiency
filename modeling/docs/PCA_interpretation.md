@@ -262,3 +262,138 @@ Aurora kinases; *PLK1* polo-like kinase 1; *CCNB1/CCNB2* B-type cyclins;
 assembly; *TOP2A* topoisomerase II-alpha; *PTTG1* securin; *SMC4*
 condensin; *CKS1B/CKS2* CDK regulatory subunits) are standard textbook
 assignments consistent with sources 1 and 3.
+
+---
+
+# PC1 under the DA-only outcome, at both timepoints
+
+Everything above concerns the published D11 basis. This section covers the
+`da_untreated` variant — 136 lines, qualifying-only fit — at **both** D11 and
+D30. Regenerate with `uv run python -m modeling.pc1_loadings_analysis`;
+top loadings in `modeling/results/pc1_loadings_{D11,D30}_da_untreated.csv`.
+
+**Only PC1 is interpreted, and deliberately so.** PC2/PC3 are near-tied in
+variance and rotate between fits — `PCn` is a slot, not an axis. PC1 replicates
+at r = 0.9995, which is what makes a gene-level reading meaningful at all.
+**Sign is arbitrary**; poles are named by their own gene content.
+
+## D11 PC1 — cycling progenitors vs. neurogenic states (5.4% of HVG variance)
+
+One pole is an unusually clean G2/M program:
+
+> `HMGB2 PTTG1 NUSAP1 CENPF UBE2C CKS2 TOP2A PLK1 CCNB1 CCNB2 CDC20 AURKB
+> BIRC5 CCNA2 CDK1 TPX2 AURKA MKI67`
+
+| gene set | median rank (of 2000) | background | p |
+|---|---|---|---|
+| Tirosh/Seurat **G2/M** | **1972** | 980 | 3.0 × 10⁻²⁷ |
+| Tirosh/Seurat **S** | 1810 | 995 | 2.7 × 10⁻⁶ |
+| pan-neuronal | 152 | 1005 | 1.1 × 10⁻⁵ |
+| progenitor/glial | 478 | 1002 | **0.29 — not significant** |
+
+Line level agrees independently: PC1 tracks the **proliferating** progenitor
+fraction at **+0.829** while tracking non-cycling FPP at −0.398. Not "more
+progenitors" — specifically cycling ones.
+
+**This replicates the published D11 result** (ρ +0.563 with outcome, +0.798
+with `phat_P_FPP`) on a different cohort and a different outcome: **+0.556** and
+**+0.829** here.
+
+Two things this does **not** license:
+
+- **"Proliferation" is too coarse.** A line's score rises either because it has
+  *more* cycling progenitors or because its progenitors express a *stronger*
+  cycle program. These data cannot separate the two.
+- **Do not name the opposite pole from its top genes.** Those are ribosomal and
+  translation factors (`RPL34 RPS27 EIF3E EIF4A2 GAPDH`). The neuronal signal
+  there comes from the rank statistic, not the visible gene list.
+
+## D30 PC1 — neuronal conversion (9.8%, nearly double D11's)
+
+One pole is a coherent neuronal structure / neurite-outgrowth program:
+
+> `MLLT11 TUBB2B TUBA1A TUBB2A STMN2 RTN1 GAP43 NSG1 MAP1B CRMP1 INA RAB3A
+> APLP1 MARCKSL1 BASP1 MAPT VAMP2 GNG3`
+
+**The cell cycle has moved to the opposite pole** (G2/M median rank 432,
+p = 5.5 × 10⁻⁸; pan-neuronal 1967, p = 1.5 × 10⁻⁶). So D11's axis and D30's are
+**not the same axis seen twice** — closer to inverses. At D11 the dominant
+variation is how much is still dividing; by D30 it is how much has become a
+neuron.
+
+**These are canonical neuronal genes, not dopaminergic ones.** Midbrain/DA
+determinants are absent from the top list. This is *not* a "DA identity" PC.
+
+## The apparent paradox, and its resolution
+
+At the line level D30 PC1 tracks **DA at +0.846** but **Sert at +0.050**, and
+unassigned neurons *negatively* (−0.335). A generic neuronal signature should
+track all neurons.
+
+Two candidate explanations — lineage-specific axis, or generic axis where DA
+happens to dominate — were separated by decomposing the line mean,
+`line_PC1 ≈ Σₖ pₖ · mean_PC1_within_type_k`:
+
+| | R² of line-level PC1 |
+|---|---|
+| **composition alone** (common within-type means) | **0.891** |
+| within-type state alone (common composition) | 0.484 |
+
+**D30 PC1 is predominantly composition-driven.** And composition-only PC1
+tracks the outcome *better* than the real thing (**+0.859** vs +0.762) — the
+predictive signal is which cells a line has, not what state they are in.
+
+The per-cell-type means explain the rest:
+
+| cell type | mean PC1 | n cells |
+|---|---|---|
+| dopaminergic | **+14.4** | 58,772 |
+| unassigned neuron 1 | +11.9 | 19,170 |
+| **serotonergic** | **−4.4** | 50,885 |
+| floor-plate progenitor | −8.6 | 53,411 |
+| proliferating FPP | −8.9 | 17,391 |
+| ependymal-like | −13.2 | 25,732 |
+
+**D30 serotonergic cells sit on the progenitor side of the axis.** That is not
+an artefact: it matches the marker table in
+[`D30_celltype_interpretation.md`](D30_celltype_interpretation.md), where Sert
+cells carry STMN2 4.4 and MAP2 0.35 against DA's 27.9 and 3.26 — they are
+transcriptionally *immature* neurons at D30. PC1 is a neuronal-**maturation**
+axis, and Sert has not travelled along it yet.
+
+**Sert's near-zero correlation is informative, not an artefact of an invariant
+fraction** — Sert ranges 0.000–0.685 across lines (SD 0.176), comparable to
+DA's 0.226. Checked because a flat fraction would have made +0.05 meaningless.
+
+## What must not be claimed
+
+- **Pool explains η² ≈ 0.47 (D11) and 0.52 (D30)** of PC1's across-line
+  variance. "PC1 is proliferation" is defensible at the gene level; "line X is
+  more proliferative" is half a statement about which pool it sat in. Nothing
+  here is shown to be intrinsic to a line, independent of batch, or to transfer
+  to a new run. **r = 0.9995 reproducibility is numerical stability, not
+  biological validity — a batch axis can be perfectly reproducible.**
+- **The D30 DA correlation is partly built in.** A line mean over all cells will
+  track cell-type proportions whenever those types occupy different PC regions.
+  +0.846 is not independent validation of DA biology.
+- **Both negative poles are ribosomal-protein-dominated**, which under
+  library-size normalisation can appear depleted simply because other programs
+  take up more of the transcript budget. Treat the negative poles' molecular
+  interpretation as partly technical.
+- **The gene-set p-values are descriptive.** Genes are correlated and were
+  HVG-selected, so these are not calibrated pathway-level inferences. The
+  directions are convincing; the exponents should not be quoted as evidence
+  strength.
+- **The outcome is compositional.** `DA / all cells` conflates more DA with
+  less off-target and with differential survival.
+- **Nothing here is causal.** "More D11 cycling progenitors predicts higher D52
+  DA fraction" is the defensible form. It would be undermined if the
+  association vanishes within pools, if non-floor-plate cycling cells predict
+  equally well, or if PC1 predicts DA *fraction* but not absolute DA yield.
+
+## Open follow-ups
+
+Within-pool and leave-one-pool-out replication of the outcome association; a
+PCA with ribosomal genes excluded, to test whether the axis survives; and a
+neuron-only, composition-balanced PCA to ask whether anything separates DA from
+Sert beyond maturity.

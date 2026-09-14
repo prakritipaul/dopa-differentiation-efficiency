@@ -290,6 +290,44 @@ but its fitted coefficient is **−0.288**. Positive alone, negative once the
 other types are held fixed — consistent with §1: Sert is a different lineage,
 and at fixed composition more Sert means fewer cells left to become DA.
 
+**6. PC1 is a different axis at each timepoint — and at D30 it is a maturation
+axis, not a DA-identity one.** Reading the top gene loadings
+([full analysis](modeling/docs/PCA_interpretation.md#pc1-under-the-da-only-outcome-at-both-timepoints)):
+
+| | D11 PC1 (5.4% var) | D30 PC1 (9.8% var) |
+|---|---|---|
+| one pole | **G2/M cell cycle** — `HMGB2 PTTG1 NUSAP1 CENPF TOP2A MKI67` | **pan-neuronal** — `MLLT11 TUBB2B STMN2 GAP43 MAP1B MAPT` |
+| G2/M median rank (of 2000) | **1972** vs 980 background | **432** vs 1015 — *opposite pole* |
+| tracks, at line level | proliferating FPP **+0.83** | dopaminergic **+0.85** |
+
+**The cell cycle switches poles between timepoints**, so these are closer to
+inverses than to one axis seen twice: at D11 the dominant variation is how much
+is still dividing, by D30 how much has become a neuron. The D11 result
+**replicates the published D11 finding** (ρ +0.56 with the outcome here vs
++0.563 published) on a different cohort and outcome.
+
+D30's apparent paradox — a *generic* neuronal gene list that tracks DA at +0.85
+but serotonergic at **+0.05** — resolves by decomposing the line mean into
+composition and within-type state:
+
+| | R² of line-level PC1 |
+|---|---|
+| **composition alone** | **0.891** |
+| within-type state alone | 0.484 |
+
+**Composition-driven**, and composition-only PC1 tracks the outcome *better*
+than the real thing (+0.859 vs +0.762). Sert scores **−4.4** on PC1 against
+DA's **+14.4** — matching the marker evidence that D30 Sert cells are
+transcriptionally immature (STMN2 4.4 vs 27.9). So PC1 orders cells by neuronal
+*maturity*, and Sert has not travelled along it yet. Its near-zero correlation
+is informative, not an artefact of an invariant fraction: Sert ranges
+0.000–0.685 across lines.
+
+Two things this does **not** license: PC1 is ~50% pool-explained at both
+timepoints (η² 0.47 / 0.52), so nothing here is shown to be intrinsic to a line;
+and D30's +0.85 DA correlation is partly *built in*, since any line mean tracks
+composition whenever cell types occupy different PC regions.
+
 ### Caveats
 
 The `k = 0` selections mean the grouped-proportions LOCO row compares against an
