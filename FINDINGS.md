@@ -1,43 +1,297 @@
 # Findings
 
-Two analyses of the same data (Jerber et al. 2021), run in sequence. **The
-second is the headline result; the first is how we got there.**
+**Predicting day-52 dopaminergic yield from earlier single-cell snapshots**,
+136 iPSC lines, [Jerber et al. 2021](https://www.nature.com/articles/s41588-021-00801-6).
 
-| | **Phase 1 — exploratory** | **Phase 2 — headline** |
+Outcome: `DA / all D52 cells`, untreated cells only. Success = ≥ 0.2
+(61 / 75). Donor-grouped 5-fold × 10 repeats, nested tuning, pre-registered
+headline model. Methods: [`modeling/README.md`](modeling/README.md).
+
+| | **D11 → D52** | **D30 → D52** |
 |---|---|---|
-| outcome | `(DA + Sert) / all D52 cells` | **`DA / all D52 cells`** |
-| D52 cells counted | all, incl. rotenone-treated | **untreated only** |
-| cohort | 138 lines | **136 lines** |
-| timepoints | D11 → D52 | **D11 → D52 and D30 → D52** |
-| purpose | reproduce the authors' own outcome definition, so results are comparable to theirs | answer the question actually of interest: dopaminergic yield |
+| ridge — R² | 0.503 ± 0.015 | 0.802 ± 0.009 |
+| logistic_l2 — ROC-AUC | 0.906 ± 0.008 | 0.945 ± 0.008 |
+| logistic_l2 — Brier | 0.125 | 0.090 |
 
-**Why phase 1 first.** Adopting the authors' exact definition — including the
-choices we later departed from — was what made it possible to check this
-pipeline against a published result at all. It established that the D11 → D52
-prediction works, calibrated what "good" looks like, and surfaced the two
-problems that motivated phase 2. It is kept in full rather than deleted,
-because the comparison to the literature rests on it.
+Identical fold assignments at both timepoints, so the comparison is paired.
 
-**Why phase 2 is the headline.** The published outcome (a) counts
-rotenone-treated cells, a complex-I inhibitor that preferentially kills the
-very neurons in its numerator, and (b) sums two distinct lineages that we show
-track independently. Dopaminergic yield is the quantity the protocol is
-actually for.
-
-**Read phase 2 first** ([§P2](#phase-2--headline-dopaminergic-only-efficiency)).
-Phase 1 follows as context.
-
-> **Numbers from the two phases are not comparable.** Different outcome,
-> different cells, different cohort. A lower phase-2 number is a harder target,
-> not a regression. See §P2.2.
+**In one line:** D11 predicts dopaminergic yield well; D30 predicts it better
+but mostly because the answer is already visible in the predictors; and at D30 a
+single raw cell-type proportion out-ranks the entire model.
 
 ---
 
-# Phase 1 — exploratory: the authors' DA+Sert outcome
+# Results
+
+Result files carry the `_da_untreated` suffix, meaning **`DA / all D52 cells`,
+untreated cells only** — see
+[`modeling/results/README.md`](modeling/results/README.md) for a file-by-file
+guide. The earlier DA+Sert analysis is in the [appendix](#appendix--phase-1-the-authors-dasert-outcome);
+its files are unchanged and byte-identical.
+
+## 1. Why this outcome, not the published one
+
+Two reasons, in brief (detail in the [README footnote](README.md#-on-the-outcome-definition)):
+
+1. **The published metric counts rotenone-treated cells** — 219,238 `ROT`
+   against 303,856 `NONE`, interleaved through every qualifying combo. Rotenone
+   preferentially damages dopaminergic neurons, the cells in its own numerator.
+2. **It sums two lineages that track independently:**
+
+| D30 predictor | → D52 `DA/all` |
+|---|---|
+| `phat_DA` | ρ = **+0.932** |
+| `phat_Sert` | Pearson **+0.057** |
+
+`DA/(DA+Sert)` spreads near-uniformly 0–1 across lines — rostro-caudal identity
+looks line-intrinsic and fixed before D30.
+
+A deliberate divergence, not a bug fix: the authors' notebook applies a ≥10-cell
+threshold and no treatment filter. Cost: 2 lines fall below the threshold
+(both pool5), giving **136 lines / 157 combos / 20 donors** — donor count
+unchanged, so donor-grouped CV keeps its structure.
+
+## 2. Results
+
+Identical design to the published work: donor-grouped 5-fold × 10 repeats,
+nested tuning, same model grids, same pre-registered headline. Both timepoints
+were scored on fold tables verified to agree on **every** fold's train/test
+membership (34,816 rows compared), so the comparison is paired and any
+difference is attributable to the timepoint alone.
+
+| | **D11 → D52** | **D30 → D52** |
+|---|---|---|
+| ridge — R² | 0.503 ± 0.015 | **0.802 ± 0.009** |
+| ridge — MAE / RMSE | 0.099 / 0.134 | 0.061 / 0.085 |
+| logistic_l2 — ROC-AUC | 0.906 ± 0.008 | **0.945 ± 0.008** |
+| logistic_l2 — PR-AUC | 0.874 | 0.906 |
+| logistic_l2 — balanced acc | 0.834 | 0.877 |
+| logistic_l2 — Brier | 0.125 | 0.090 |
+
+**D11's DA-only numbers are lower than its published DA+Sert ones** (R² 0.503 vs
+0.653, AUC 0.906 vs 0.947). That is **not a regression** — it is a harder
+target. `DA+Sert` is bimodal with a genuine gap at 0.2, so the threshold
+separates two clumps; `DA/all` is unimodal with no gap, so the same threshold
+cuts through a dense region. Different question, different difficulty. The two
+families are not comparable and should never be differenced.
+
+## 3. ⚠️ The D30 model does not beat a single raw column
+
+The fit-free reference lines, donor-level bootstrap over 20 donors, 2,000
+resamples:
+
+| D30 benchmark (no model, no fitted parameter) | ρ | ROC-AUC |
+|---|---|---|
+| **`phat_DA` alone** | +0.932 | **0.960** [0.922–0.986] |
+| `phat_DA + phat_Sert` | +0.799 | 0.886 [0.834–0.941] |
+| `phat_FPP + phat_P_FPP` (undecided) | −0.788 | 0.883 |
+| progenitor balance (share of non-target) | +0.452 | 0.727 |
+
+**The full D30 model scores 0.945. One raw D30 column scores 0.960.**
+
+Those two are not like-for-like — the benchmark is in-sample, the model
+out-of-fold — so the gap above settles nothing on its own. **It has since been
+tested properly** (`modeling/test_incremental_value.py`): both feature sets put
+through identical donor-grouped folds, nested inner selection on training lines
+only, differences paired per repeat.
+
+| metric | `phat_DA` alone | full model | full better in |
+|---|---|---|---|
+| ROC-AUC | **0.9563** ± 0.0018 | 0.9393 ± 0.0080 | **0 / 10 repeats** |
+| log loss | 0.5707 | **0.3276** ± 0.0311 | **10 / 10 repeats** |
+| Brier | 0.1897 | **0.0930** ± 0.0052 | **10 / 10 repeats** |
+| accuracy | 0.8676 | 0.8750 | 6 / 10 |
+
+**The answer is split, and both halves are unanimous across repeats.**
+`phat_DA` alone *ranks* lines better — by a small margin (−0.017 AUC) but in
+every single repeat. The full model is *calibrated* far better — log loss
+−0.243, Brier −0.097, again in every repeat.
+
+So: **to rank lines, one raw D30 column beats the entire model. To get
+trustworthy probabilities, the model earns its keep.** This is precisely why
+AUC could not settle the question — at 0.95 it is saturated and speaks only to
+ordering.
+
+Applies to D30 only: D11 has no `phat_DA` (its three annotated types are FPP,
+NB, P_FPP), so there is no analogous single-column comparator there.
+
+**A mis-specified benchmark nearly hid this.** The comparator was carried over
+from the previous outcome and summed `phat_DA + phat_Sert` (0.886) rather than
+`phat_DA` (0.960). Against the wrong reference the model appeared to add ~6 AUC
+points. **A benchmark whose numerator does not match the outcome is not a weaker
+check — it is a misleading one.**
+
+## 4. What D30 can and cannot claim
+
+D30's stronger numbers are **expected and largely definitional**. Its annotation
+set already contains DA cells, so the outcome partly exists in the predictors.
+This is **construct overlap, not leakage**: D30 and D52 are separate cells from
+separate harvests, D30 precedes D52, and no D52 information enters the features.
+
+The defensible claim is *how much of the D52 phenotype is already established by
+D30* — not that something was predicted. Marker analysis over all 250,923 D30
+cells splits the seven types three ways:
+
+- **already arrived** — DA, Sert (48% of cells)
+- **still undecided** — FPP, P_FPP (31%): SOX2⁺/HES1⁺/VIM-high progenitors, not
+  yet neuronal, P_FPP still cycling
+- **off-target, terminal** — Epen1 (ciliated/choroid-plexus-like, TTR 134.7),
+  U_Neur1/2 (post-mitotic, no lineage markers) (20%)
+
+So ~31% of D30 cells genuinely have not decided — but the benchmark isolating
+that signal reaches only AUC 0.727, far below the maturation-driven numbers.
+Detail in
+[`modeling/docs/D30_celltype_interpretation.md`](modeling/docs/D30_celltype_interpretation.md).
+
+## 5. Caveats
+
+- **Not comparable to the published family.** Different outcome, different D52
+  cells, different cohort.
+- **`pool5` annotation bias is unaddressed.** Its ~10× D30 sequencing-depth
+  deficit may have biased D30 *cell-type annotation* itself; excluding it from
+  HVG/PCA fitting does nothing to correct biased labels. It holds 18 of 157
+  combos.
+- **Shared annotation machinery unverified.** Whether D30 and D52 types were
+  annotated independently is unknown. Not leakage either way, but correlated
+  labelling error would inflate the apparent D30→D52 continuity.
+- **The 0.2 threshold is inherited**, and means something different here. Its
+  fold-level class balance was not profiled.
+- **No external validation.** 20 donors, one protocol, one study.
+
+## 6. Which features matter
+
+One-SE config selection, paired per-fold LOCO and permutation deltas, full-fit
+coefficients/SHAP from a PCA fit once on all 136 lines, pool η² on the same
+features. Tables in `modeling/results/`.
+
+### Recapitulates the published analysis
+
+**`phat_NB` is still D11's standout composition feature**, with the same sign
+and the same technical cleanliness:
+
+| | published (DA+Sert) | DA-only |
+|---|---|---|
+| `phat_NB` univariate ρ | −0.733 | −0.554 (cls) / −0.610 (reg) |
+| `phat_NB` SHAP | 0.243 | **1.050** (cls) |
+| `phat_NB` pool η² | 0.037 | **0.035** |
+
+More D11 neuroblasts → worse D52 dopaminergic yield, and it remains the only
+strongly predictive feature that is *not* pool-associated. The weaker
+correlation is expected: DA-only is a harder target.
+
+**Pool confounding of the PCs persists**, and in the same severity range
+(η² 0.11–0.83 here, 0.45–0.76 published). **Composition still dominates the
+transcriptome** on permutation importance at both timepoints.
+
+### New
+
+**1. At D30 the transcriptome adds essentially nothing beyond composition.**
+Three of four models select **k = 0 PCs** under the one-SE rule (lasso, ridge,
+logistic_l1; only logistic_l2 keeps 6). Where PCs are kept, they are dwarfed:
+
+| D30, logistic_l2 | permutation Δ |
+|---|---|
+| proportions (grouped) | **0.360** |
+| best single PC (PC1) | 0.018 |
+
+A **20×** gap. This is the feature-level counterpart of §3's benchmark result — `phat_DA` alone nearly matches the full model —
+from the other direction. At D11 the PCs do carry weight (top LOCO Δ
++0.064).
+
+**2. `phat_DA` dominates D30**, as the construct-overlap framing predicts:
+univariate ρ +0.792 (classification) and **+0.932** (regression), SHAP 1.292,
+the largest of any feature at either timepoint.
+
+**3. PC indices rotated between cohorts — concretely, not just in principle.**
+The published PC2 (ρ +0.593, η² 0.764) does **not** correspond to the DA-only
+PC2 (ρ −0.626, η² 0.114). The heavily pool-associated component is now **PC3**
+(η² 0.832). `modeling/README.md` documents that PC2/PC3 are near-tied in
+variance and rotate between fits; this is that caveat materialising. **`PCn` is
+a slot, not a stable biological entity** — do not compare PC indices across
+these tables or against the published ones.
+
+**4. D11's strongest PC under this outcome is also its most pool-confounded
+feature.** `PC3` carries the largest LOCO Δ (+0.064) and SHAP (1.398) in the
+D11 classification table, and η² = **0.832** — more pool-associated than
+anything in the published table. So D11's DA-only performance leans on a
+technically entangled component, and may not transfer across pools. Treat with
+more caution than the published D11 result, not less.
+
+**5. `phat_Sert` flips sign conditionally at D30.** Univariate ρ is **+0.215**,
+but its fitted coefficient is **−0.288**. Positive alone, negative once the
+other types are held fixed — consistent with §1: Sert is a different lineage,
+and at fixed composition more Sert means fewer cells left to become DA.
+
+### Caveats
+
+The `k = 0` selections mean the grouped-proportions LOCO row compares against an
+**intercept-only** model (no features at all). That is the correct comparison,
+and it is computed rather than skipped, but it is a different kind of baseline
+than the other rows.
+
+SHAP and coefficients come from a single full-fit basis; LOCO and permutation
+average over 256 differently-rotated per-fold bases. For **PC1** that is fine
+(it replicates at r = 0.9995). For the near-tied components the two column
+families do not strictly refer to the same direction — the rows are kept
+per-PC to match the published table's shape, but should be read as *a* PC of
+roughly that rank, not a fixed axis.
+
+## 7. Literature assessment: recapitulated vs. new
+
+Same framing as the appendix's §5, applied to these results. The baseline
+comparison is unchanged and worth restating: **Jerber et al. predicted
+differentiation efficiency from *iPSC-stage bulk RNA-seq*, before
+differentiation began.** Nothing here reproduces that. These are different
+predictors, a different outcome, and in one case a different timepoint.
+
+**Scope limit, stated up front.** "New" below means *not present in the
+authors' analysis that we actually read* — their `Figure_2` notebook and the
+outcome definition it encodes. We did not audit the full paper or its
+supplements. Treat "new" as "not found where we looked", not as a priority
+claim.
+
+| # | Finding | Status | Basis |
+|---|---|---|---|
+| 1 | D11 scRNA-seq predicts D52 **dopaminergic** yield: ROC-AUC 0.906, R² 0.503 | **New** | The authors predicted from iPSC-stage bulk, and their efficiency metric sums DA with Sert; a DA-only D11 → D52 predictor is not part of their analysis |
+| 2 | D30 → D52 dopaminergic yield: ROC-AUC 0.945, R² 0.802 | **New, but largely definitional** | No D30 → D52 predictor in their work. The strength is mostly construct overlap — D30 already contains DA cells — not predictive discovery. See §P2.4 |
+| 3 | **DA and Sert track independently**: D30 DA → D52 DA ρ = +0.932, while D30 Sert → D52 DA is Pearson **+0.057** | **New; and it undercuts the combined metric** | The authors' `diff_efficiency` sums the two, which presumes they behave as one quantity. They do not: `DA/(DA+Sert)` spreads near-uniformly 0–1 across lines, consistent with a line-intrinsic rostro-caudal identity fixed before D30 |
+| 4 | The published efficiency metric **counts rotenone-treated cells** | **New (methodological)** | Verified directly against their notebook: a ≥10-cell threshold and a sum of two fractions, with no treatment filter. All 159 qualifying (line, pool) combos contain both treated and untreated cells, so every line is affected. Rotenone inhibits complex I and preferentially damages DA neurons — the numerator |
+| 5 | `phat_NB` remains D11's strongest *and technically cleanest* composition feature (pool η² 0.035) | **Recapitulates phase 1, and the authors' indirect observation** | They noted a poor-differentiation cluster correlating with D11 neuroblast proportion. Phase 1 made it the top direct predictor; it survives the outcome change with the same sign |
+| 6 | **At D30 the transcriptome adds nothing beyond cell-type composition** — 3 of 4 models select k = 0 PCs; permutation Δ 0.360 for proportions vs 0.018 for the best PC | **New** | A 20× gap. Not addressed by the authors, who did not build D30 predictors |
+| 7 | One raw column (`phat_DA`) **ranks** better than the full model (AUC 0.956 vs 0.939, 10/10 repeats), while the full model is **calibrated** far better (log loss 0.328 vs 0.571, 10/10) | **New (methodological)** | Both through identical folds and nested selection. The split answer is the finding: discrimination and calibration disagree, and AUC alone would have reported the wrong conclusion in either direction |
+| 8 | ~31% of D30 cells are still uncommitted progenitors (FPP/P_FPP: SOX2⁺/HES1⁺/VIM-high, P_FPP cycling); Epen1 is ciliated choroid-plexus-like (TTR 134.7) | **Recapitulates their annotation; new marker-level quantification** | They defined and named these types. What is added is the three-way split into *arrived / undecided / off-target* and the evidence for it, which is what makes the D30 result interpretable rather than circular |
+| 9 | D11's strongest PC under this outcome is **also its most pool-confounded feature** (η² 0.832) | **New; a caution, not a result** | Phase 1 found PCs pool-confounded generally (§3); here the single most important PC is the worst offender, so the DA-only D11 result may not transfer across pools |
+| 10 | PC indices **rotate between cohorts**, concretely: published PC2 (ρ +0.593, η² 0.764) ≠ DA-only PC2 (ρ −0.626, η² 0.114) | **Recapitulates phase 1's caution, now demonstrated** | The appendix (§5, finding 9) warned that PC2/PC3 rotate between fits. This shows it happening across two real analyses, and is why PC indices must not be compared between tables |
+| 11 | Excluding treated cells costs 2 of 138 lines but leaves donors unchanged at 20 | **New (methodological)** | Both dropped lines are pool5, the lowest-yield pool at D52 (median 609 cells/line vs 3,485 in pool1) |
+
+### What this does *not* establish
+
+- **Not a better predictor than phase 1.** The DA-only numbers are lower
+  (AUC 0.906 vs 0.947 at D11) because the target is harder, not because
+  anything regressed. The two are not comparable at all.
+- **Not a validated D30 biomarker.** D30's strength is substantially the
+  outcome already existing in the predictors.
+- **Not externally validated.** 20 donors, one protocol, one study, no held-out
+  batch. Everything here is internal cross-validation.
+- **Not a causal claim** anywhere. All associations.
+
+---
+
+# Appendix — phase 1: the authors' DA+Sert outcome
+
+*An earlier phase, reproducing Jerber et al.'s own definition
+(`(DA+Sert)/all D52 cells`, all cells, 138 lines, D11 only). Retained
+because the comparison to their published result rests on it, and because
+it is what surfaced the two problems motivating the headline analysis.*
+
+> **Not comparable to the results above.** Different outcome, different
+> cells, different cohort. `DA+Sert` is bimodal with a real gap at the 0.2
+> threshold; `DA/all` is unimodal with none, so the same cut does a
+> different job. A lower number above is a harder target, not a regression.
 
 *Reproduces Jerber et al.'s own definition of differentiation efficiency, so
-that results can be set against theirs. Superseded as the headline by phase 2,
-retained because the literature comparison depends on it.*
+that results can be set against theirs. Superseded as the headline, retained
+because the literature comparison depends on it.*
 
 
 Summary of results from this prototype, with an assessment of which
@@ -277,6 +531,8 @@ question. The gain in accuracy is real but is bought with 11 days.
 
 ---
 
+---
+
 ## Sources
 
 1. **Jerber J, Seaton DD, Cuomo ASE, et al. (2021)** "Population-scale
@@ -322,273 +578,3 @@ question. The gain in accuracy is real but is bought with 11 days.
    leaves pool-to-pool structure, which is what §3 measures.
 
 ---
-
-# Phase 2 — headline: dopaminergic-only efficiency
-
-Phase 1 above uses the published outcome — `(DA + Sert) / all D52 cells`,
-counting every D52 cell. Phase 2 covers a second analysis with a **different target**, run alongside
-rather than replacing it. The published
-results are unchanged and every file backing them is byte-identical.
-
-Results live in `modeling/results/*_da_untreated.csv`; that suffix means
-**`DA / all D52 cells`, untreated cells only**. See
-[`modeling/results/README.md`](modeling/results/README.md) for the file-by-file
-guide.
-
-## P2.1 Why a different outcome
-
-**The published outcome counts rotenone-treated cells.** D52 — and only D52 —
-contains 219,238 `ROT` cells against 303,856 `NONE`, interleaved so that *every*
-qualifying `(cell_line, pool)` combo contains both. Rotenone inhibits
-mitochondrial complex I and preferentially damages dopaminergic neurons, the
-cells in the numerator. Checked against the authors' own notebook: they apply
-only a ≥10-cell threshold and never filter on treatment. **This is therefore a
-deliberate divergence from the published definition, not a bug fix.**
-
-**It also merges two lineages.** DA and Sert are both floor-plate-derived but
-differ by rostro-caudal position, and they track *separately*:
-
-| D30 predictor | → D52 `DA/all` |
-|---|---|
-| `phat_DA` | ρ = **+0.932** |
-| `phat_Sert` | Pearson **+0.057** |
-
-D30 Sert says essentially nothing about D52 DA. Summing them averages over a
-real biological axis. Consistent with this, `DA/(DA+Sert)` spreads almost
-uniformly 0–1 across lines — rostro-caudal identity looks line-intrinsic and
-fixed before D30.
-
-**Cost of the change:** excluding ROT cells drops 2 lines below the ≥10-cell
-threshold (`HPSI0115i-melw_1`, `HPSI0115i-qecv_2` — both pool5, both reduced to
-6 and 8 untreated D52 cells), giving **136 lines, 157 combos, 20 donors**.
-Donor count is unchanged, so donor-grouped CV keeps its structure.
-
-## P2.2 Results
-
-Identical design to the published work: donor-grouped 5-fold × 10 repeats,
-nested tuning, same model grids, same pre-registered headline. Both timepoints
-were scored on fold tables verified to agree on **every** fold's train/test
-membership (34,816 rows compared), so the comparison is paired and any
-difference is attributable to the timepoint alone.
-
-| | **D11 → D52** | **D30 → D52** |
-|---|---|---|
-| ridge — R² | 0.503 ± 0.015 | **0.802 ± 0.009** |
-| ridge — MAE / RMSE | 0.099 / 0.134 | 0.061 / 0.085 |
-| logistic_l2 — ROC-AUC | 0.906 ± 0.008 | **0.945 ± 0.008** |
-| logistic_l2 — PR-AUC | 0.874 | 0.906 |
-| logistic_l2 — balanced acc | 0.834 | 0.877 |
-| logistic_l2 — Brier | 0.125 | 0.090 |
-
-**D11's DA-only numbers are lower than its published DA+Sert ones** (R² 0.503 vs
-0.653, AUC 0.906 vs 0.947). That is **not a regression** — it is a harder
-target. `DA+Sert` is bimodal with a genuine gap at 0.2, so the threshold
-separates two clumps; `DA/all` is unimodal with no gap, so the same threshold
-cuts through a dense region. Different question, different difficulty. The two
-families are not comparable and should never be differenced.
-
-## P2.3 ⚠️ The D30 model does not beat a single raw column
-
-The fit-free reference lines, donor-level bootstrap over 20 donors, 2,000
-resamples:
-
-| D30 benchmark (no model, no fitted parameter) | ρ | ROC-AUC |
-|---|---|---|
-| **`phat_DA` alone** | +0.932 | **0.960** [0.922–0.986] |
-| `phat_DA + phat_Sert` | +0.799 | 0.886 [0.834–0.941] |
-| `phat_FPP + phat_P_FPP` (undecided) | −0.788 | 0.883 |
-| progenitor balance (share of non-target) | +0.452 | 0.727 |
-
-**The full D30 model scores 0.945. One raw D30 column scores 0.960.**
-
-Those two are not like-for-like — the benchmark is in-sample, the model
-out-of-fold — so the gap above settles nothing on its own. **It has since been
-tested properly** (`modeling/test_incremental_value.py`): both feature sets put
-through identical donor-grouped folds, nested inner selection on training lines
-only, differences paired per repeat.
-
-| metric | `phat_DA` alone | full model | full better in |
-|---|---|---|---|
-| ROC-AUC | **0.9563** ± 0.0018 | 0.9393 ± 0.0080 | **0 / 10 repeats** |
-| log loss | 0.5707 | **0.3276** ± 0.0311 | **10 / 10 repeats** |
-| Brier | 0.1897 | **0.0930** ± 0.0052 | **10 / 10 repeats** |
-| accuracy | 0.8676 | 0.8750 | 6 / 10 |
-
-**The answer is split, and both halves are unanimous across repeats.**
-`phat_DA` alone *ranks* lines better — by a small margin (−0.017 AUC) but in
-every single repeat. The full model is *calibrated* far better — log loss
-−0.243, Brier −0.097, again in every repeat.
-
-So: **to rank lines, one raw D30 column beats the entire model. To get
-trustworthy probabilities, the model earns its keep.** This is precisely why
-AUC could not settle the question — at 0.95 it is saturated and speaks only to
-ordering.
-
-Applies to D30 only: D11 has no `phat_DA` (its three annotated types are FPP,
-NB, P_FPP), so there is no analogous single-column comparator there.
-
-**A mis-specified benchmark nearly hid this.** The comparator was carried over
-from the previous outcome and summed `phat_DA + phat_Sert` (0.886) rather than
-`phat_DA` (0.960). Against the wrong reference the model appeared to add ~6 AUC
-points. **A benchmark whose numerator does not match the outcome is not a weaker
-check — it is a misleading one.**
-
-## P2.4 What D30 can and cannot claim
-
-D30's stronger numbers are **expected and largely definitional**. Its annotation
-set already contains DA cells, so the outcome partly exists in the predictors.
-This is **construct overlap, not leakage**: D30 and D52 are separate cells from
-separate harvests, D30 precedes D52, and no D52 information enters the features.
-
-The defensible claim is *how much of the D52 phenotype is already established by
-D30* — not that something was predicted. Marker analysis over all 250,923 D30
-cells splits the seven types three ways:
-
-- **already arrived** — DA, Sert (48% of cells)
-- **still undecided** — FPP, P_FPP (31%): SOX2⁺/HES1⁺/VIM-high progenitors, not
-  yet neuronal, P_FPP still cycling
-- **off-target, terminal** — Epen1 (ciliated/choroid-plexus-like, TTR 134.7),
-  U_Neur1/2 (post-mitotic, no lineage markers) (20%)
-
-So ~31% of D30 cells genuinely have not decided, and what they become is real
-prediction — but the progenitor-balance benchmark that isolates it reaches only
-AUC 0.727, well below the maturation-driven numbers. Full detail in
-[`modeling/docs/D30_celltype_interpretation.md`](modeling/docs/D30_celltype_interpretation.md).
-
-## P2.5 Caveats specific to phase 2
-
-- **Not comparable to the published family.** Different outcome, different D52
-  cells, different cohort.
-- **`pool5` annotation bias is unaddressed.** Its ~10× D30 sequencing-depth
-  deficit may have biased D30 *cell-type annotation* itself; excluding it from
-  HVG/PCA fitting does nothing to correct biased labels. It holds 18 of 157
-  combos.
-- **Shared annotation machinery unverified.** Whether D30 and D52 types were
-  annotated independently is unknown. Not leakage either way, but correlated
-  labelling error would inflate the apparent D30→D52 continuity.
-- **The 0.2 threshold is inherited**, and means something different here. Its
-  fold-level class balance was not profiled.
-- **Feature importance was not computed** for this family — `feature_importance.py`
-  raises for any non-published variant, because its full-fit columns come from a
-  PCA basis fit under the published cohort and mixing bases is a known defect.
-- **No external validation.** 20 donors, one protocol, one study.
-
-## P2.6 Which features matter — and how it differs from the published analysis
-
-Same method as §2: one-SE config selection, paired per-fold LOCO and
-permutation deltas, full-fit coefficients/SHAP from a PCA fit once on all 136
-qualifying lines (`005 --timepoint {D11,D30} --label-variant da_untreated`),
-pool η² on those same features. Tables:
-`modeling/results/feature_importance_table_*_{D11,D30}_qualonly_da_untreated.csv`.
-
-### Recapitulates the published analysis
-
-**`phat_NB` is still D11's standout composition feature**, with the same sign
-and the same technical cleanliness:
-
-| | published (DA+Sert) | DA-only |
-|---|---|---|
-| `phat_NB` univariate ρ | −0.733 | −0.554 (cls) / −0.610 (reg) |
-| `phat_NB` SHAP | 0.243 | **1.050** (cls) |
-| `phat_NB` pool η² | 0.037 | **0.035** |
-
-More D11 neuroblasts → worse D52 dopaminergic yield, and it remains the only
-strongly predictive feature that is *not* pool-associated. The weaker
-correlation is expected: DA-only is a harder target.
-
-**Pool confounding of the PCs persists**, and in the same severity range
-(η² 0.11–0.83 here, 0.45–0.76 published). **Composition still dominates the
-transcriptome** on permutation importance at both timepoints.
-
-### New
-
-**1. At D30 the transcriptome adds essentially nothing beyond composition.**
-Three of four models select **k = 0 PCs** under the one-SE rule (lasso, ridge,
-logistic_l1; only logistic_l2 keeps 6). Where PCs are kept, they are dwarfed:
-
-| D30, logistic_l2 | permutation Δ |
-|---|---|
-| proportions (grouped) | **0.360** |
-| best single PC (PC1) | 0.018 |
-
-A **20×** gap. This is the feature-level counterpart of the benchmark result in
-§A3 — `phat_DA` alone nearly matches the full model — and it says the same
-thing from the other direction. At D11 the PCs do carry weight (top LOCO Δ
-+0.064).
-
-**2. `phat_DA` dominates D30**, as the construct-overlap framing predicts:
-univariate ρ +0.792 (classification) and **+0.932** (regression), SHAP 1.292,
-the largest of any feature at either timepoint.
-
-**3. PC indices rotated between cohorts — concretely, not just in principle.**
-The published PC2 (ρ +0.593, η² 0.764) does **not** correspond to the DA-only
-PC2 (ρ −0.626, η² 0.114). The heavily pool-associated component is now **PC3**
-(η² 0.832). `modeling/README.md` documents that PC2/PC3 are near-tied in
-variance and rotate between fits; this is that caveat materialising. **`PCn` is
-a slot, not a stable biological entity** — do not compare PC indices across
-these tables or against the published ones.
-
-**4. D11's strongest PC under this outcome is also its most pool-confounded
-feature.** `PC3` carries the largest LOCO Δ (+0.064) and SHAP (1.398) in the
-D11 classification table, and η² = **0.832** — more pool-associated than
-anything in the published table. So D11's DA-only performance leans on a
-technically entangled component, and may not transfer across pools. Treat with
-more caution than the published D11 result, not less.
-
-**5. `phat_Sert` flips sign conditionally at D30.** Univariate ρ is **+0.215**,
-but its fitted coefficient is **−0.288**. Positive alone, negative once the
-other types are held fixed — consistent with §A1: Sert is a different lineage,
-and at fixed composition more Sert means fewer cells left to become DA.
-
-### Caveats
-
-The `k = 0` selections mean the grouped-proportions LOCO row compares against an
-**intercept-only** model (no features at all). That is the correct comparison,
-and it is computed rather than skipped, but it is a different kind of baseline
-than the other rows.
-
-SHAP and coefficients come from a single full-fit basis; LOCO and permutation
-average over 256 differently-rotated per-fold bases. For **PC1** that is fine
-(it replicates at r = 0.9995). For the near-tied components the two column
-families do not strictly refer to the same direction — the rows are kept
-per-PC to match the published table's shape, but should be read as *a* PC of
-roughly that rank, not a fixed axis.
-
-## P2.7 Literature assessment: recapitulated vs. new
-
-Same framing as §5, applied to the dopaminergic-only results. The baseline
-comparison is unchanged and worth restating: **Jerber et al. predicted
-differentiation efficiency from *iPSC-stage bulk RNA-seq*, before
-differentiation began.** Nothing here reproduces that. These are different
-predictors, a different outcome, and in one case a different timepoint.
-
-**Scope limit, stated up front.** "New" below means *not present in the
-authors' analysis that we actually read* — their `Figure_2` notebook and the
-outcome definition it encodes. We did not audit the full paper or its
-supplements. Treat "new" as "not found where we looked", not as a priority
-claim.
-
-| # | Finding | Status | Basis |
-|---|---|---|---|
-| 1 | D11 scRNA-seq predicts D52 **dopaminergic** yield: ROC-AUC 0.906, R² 0.503 | **New** | The authors predicted from iPSC-stage bulk, and their efficiency metric sums DA with Sert; a DA-only D11 → D52 predictor is not part of their analysis |
-| 2 | D30 → D52 dopaminergic yield: ROC-AUC 0.945, R² 0.802 | **New, but largely definitional** | No D30 → D52 predictor in their work. The strength is mostly construct overlap — D30 already contains DA cells — not predictive discovery. See §P2.4 |
-| 3 | **DA and Sert track independently**: D30 DA → D52 DA ρ = +0.932, while D30 Sert → D52 DA is Pearson **+0.057** | **New; and it undercuts the combined metric** | The authors' `diff_efficiency` sums the two, which presumes they behave as one quantity. They do not: `DA/(DA+Sert)` spreads near-uniformly 0–1 across lines, consistent with a line-intrinsic rostro-caudal identity fixed before D30 |
-| 4 | The published efficiency metric **counts rotenone-treated cells** | **New (methodological)** | Verified directly against their notebook: a ≥10-cell threshold and a sum of two fractions, with no treatment filter. All 159 qualifying (line, pool) combos contain both treated and untreated cells, so every line is affected. Rotenone inhibits complex I and preferentially damages DA neurons — the numerator |
-| 5 | `phat_NB` remains D11's strongest *and technically cleanest* composition feature (pool η² 0.035) | **Recapitulates phase 1, and the authors' indirect observation** | They noted a poor-differentiation cluster correlating with D11 neuroblast proportion. Phase 1 made it the top direct predictor; it survives the outcome change with the same sign |
-| 6 | **At D30 the transcriptome adds nothing beyond cell-type composition** — 3 of 4 models select k = 0 PCs; permutation Δ 0.360 for proportions vs 0.018 for the best PC | **New** | A 20× gap. Not addressed by the authors, who did not build D30 predictors |
-| 7 | One raw column (`phat_DA`) **ranks** better than the full model (AUC 0.956 vs 0.939, 10/10 repeats), while the full model is **calibrated** far better (log loss 0.328 vs 0.571, 10/10) | **New (methodological)** | Both through identical folds and nested selection. The split answer is the finding: discrimination and calibration disagree, and AUC alone would have reported the wrong conclusion in either direction |
-| 8 | ~31% of D30 cells are still uncommitted progenitors (FPP/P_FPP: SOX2⁺/HES1⁺/VIM-high, P_FPP cycling); Epen1 is ciliated choroid-plexus-like (TTR 134.7) | **Recapitulates their annotation; new marker-level quantification** | They defined and named these types. What is added is the three-way split into *arrived / undecided / off-target* and the evidence for it, which is what makes the D30 result interpretable rather than circular |
-| 9 | D11's strongest PC under this outcome is **also its most pool-confounded feature** (η² 0.832) | **New; a caution, not a result** | Phase 1 found PCs pool-confounded generally (§3); here the single most important PC is the worst offender, so the DA-only D11 result may not transfer across pools |
-| 10 | PC indices **rotate between cohorts**, concretely: published PC2 (ρ +0.593, η² 0.764) ≠ DA-only PC2 (ρ −0.626, η² 0.114) | **Recapitulates phase 1's caution, now demonstrated** | §5 finding 9 warned that PC2/PC3 rotate between fits. This shows it happening across two real analyses, and is why PC indices must not be compared between tables |
-| 11 | Excluding treated cells costs 2 of 138 lines but leaves donors unchanged at 20 | **New (methodological)** | Both dropped lines are pool5, the lowest-yield pool at D52 (median 609 cells/line vs 3,485 in pool1) |
-
-### What phase 2 does *not* establish
-
-- **Not a better predictor than phase 1.** The DA-only numbers are lower
-  (AUC 0.906 vs 0.947 at D11) because the target is harder, not because
-  anything regressed. The two are not comparable at all.
-- **Not a validated D30 biomarker.** D30's strength is substantially the
-  outcome already existing in the predictors.
-- **Not externally validated.** 20 donors, one protocol, one study, no held-out
-  batch. Everything here is internal cross-validation.
-- **Not a causal claim** anywhere. All associations.
