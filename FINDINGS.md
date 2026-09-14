@@ -21,6 +21,25 @@ single raw cell-type proportion out-ranks the entire model.
 
 ---
 
+## Cell types and notation
+
+`phat_X` denotes the **estimated proportion** of cell type *X* in a line — the
+"hat" marks it as an estimate from a finite sample of cells, not a known
+quantity. Proportions sum to 1 within a timepoint.
+
+| label | name | timepoint |
+|---|---|---|
+| `FPP` | **floor-plate progenitor** — the on-target progenitor that gives rise to midbrain dopaminergic neurons | D11, D30, D52 |
+| `P_FPP` | **proliferating floor-plate progenitor** — the same cell type, still cycling | D11, D30, D52 |
+| `NB` | **neuroblast** — early post-mitotic neuronal precursor | D11 |
+| `DA` | **dopaminergic neuron** — the target cell type | D30, D52 |
+| `Sert` | **serotonergic neuron** — a floor-plate-derived neuron of different rostro-caudal identity | D30, D52 |
+| `Epen1` | **ependymal-like 1** — ciliated / choroid-plexus-like off-target fate | D30, D52 |
+| `U_Neur1`, `U_Neur2` | **unassigned neuron 1 / 2** — post-mitotic neurons with no lineage markers; off-target | D30 |
+| `Astro` | **astrocyte** — off-target glial fate | D52 |
+
+---
+
 # Results
 
 Result files carry the `_da_untreated` suffix, meaning **`DA / all D52 cells`,
@@ -132,11 +151,11 @@ The defensible claim is *how much of the D52 phenotype is already established by
 D30* — not that something was predicted. Marker analysis over all 250,923 D30
 cells splits the seven types three ways:
 
-- **already arrived** — DA, Sert (48% of cells)
-- **still undecided** — FPP, P_FPP (31%): SOX2⁺/HES1⁺/VIM-high progenitors, not
-  yet neuronal, P_FPP still cycling
-- **off-target, terminal** — Epen1 (ciliated/choroid-plexus-like, TTR 134.7),
-  U_Neur1/2 (post-mitotic, no lineage markers) (20%)
+- **already arrived** — dopaminergic + serotonergic neurons (48% of cells)
+- **still undecided** — floor-plate progenitors, cycling and not (31%):
+  SOX2⁺/HES1⁺/VIM-high, not yet neuronal
+- **off-target, terminal** — ependymal-like (ciliated/choroid-plexus, TTR 134.7)
+  and unassigned neurons (post-mitotic, no lineage markers) (20%)
 
 So ~31% of D30 cells genuinely have not decided — but the benchmark isolating
 that signal reaches only AUC 0.727, far below the maturation-driven numbers.
@@ -166,7 +185,7 @@ features. Tables in `modeling/results/`.
 
 ### Recapitulates the published analysis
 
-**`phat_NB` is still D11's standout composition feature**, with the same sign
+**`phat_NB`, the neuroblast proportion, is still D11's standout composition feature**, with the same sign
 and the same technical cleanliness:
 
 | | published (DA+Sert) | DA-only |
@@ -255,14 +274,8 @@ claim.
 | 1 | D11 scRNA-seq predicts D52 **dopaminergic** yield: ROC-AUC 0.906, R² 0.503 | **New** | The authors predicted from iPSC-stage bulk, and their efficiency metric sums DA with Sert; a DA-only D11 → D52 predictor is not part of their analysis |
 | 2 | D30 → D52 dopaminergic yield: ROC-AUC 0.945, R² 0.802 | **New, but largely definitional** | No D30 → D52 predictor in their work. The strength is mostly construct overlap — D30 already contains DA cells — not predictive discovery. See §P2.4 |
 | 3 | **DA and Sert track independently**: D30 DA → D52 DA ρ = +0.932, while D30 Sert → D52 DA is Pearson **+0.057** | **New; and it undercuts the combined metric** | The authors' `diff_efficiency` sums the two, which presumes they behave as one quantity. They do not: `DA/(DA+Sert)` spreads near-uniformly 0–1 across lines, consistent with a line-intrinsic rostro-caudal identity fixed before D30 |
-| 4 | The published efficiency metric **counts rotenone-treated cells** | **New (methodological)** | Verified directly against their notebook: a ≥10-cell threshold and a sum of two fractions, with no treatment filter. All 159 qualifying (line, pool) combos contain both treated and untreated cells, so every line is affected. Rotenone inhibits complex I and preferentially damages DA neurons — the numerator |
-| 5 | `phat_NB` remains D11's strongest *and technically cleanest* composition feature (pool η² 0.035) | **Recapitulates phase 1, and the authors' indirect observation** | They noted a poor-differentiation cluster correlating with D11 neuroblast proportion. Phase 1 made it the top direct predictor; it survives the outcome change with the same sign |
-| 6 | **At D30 the transcriptome adds nothing beyond cell-type composition** — 3 of 4 models select k = 0 PCs; permutation Δ 0.360 for proportions vs 0.018 for the best PC | **New** | A 20× gap. Not addressed by the authors, who did not build D30 predictors |
-| 7 | One raw column (`phat_DA`) **ranks** better than the full model (AUC 0.956 vs 0.939, 10/10 repeats), while the full model is **calibrated** far better (log loss 0.328 vs 0.571, 10/10) | **New (methodological)** | Both through identical folds and nested selection. The split answer is the finding: discrimination and calibration disagree, and AUC alone would have reported the wrong conclusion in either direction |
-| 8 | ~31% of D30 cells are still uncommitted progenitors (FPP/P_FPP: SOX2⁺/HES1⁺/VIM-high, P_FPP cycling); Epen1 is ciliated choroid-plexus-like (TTR 134.7) | **Recapitulates their annotation; new marker-level quantification** | They defined and named these types. What is added is the three-way split into *arrived / undecided / off-target* and the evidence for it, which is what makes the D30 result interpretable rather than circular |
-| 9 | D11's strongest PC under this outcome is **also its most pool-confounded feature** (η² 0.832) | **New; a caution, not a result** | Phase 1 found PCs pool-confounded generally (§3); here the single most important PC is the worst offender, so the DA-only D11 result may not transfer across pools |
-| 10 | PC indices **rotate between cohorts**, concretely: published PC2 (ρ +0.593, η² 0.764) ≠ DA-only PC2 (ρ −0.626, η² 0.114) | **Recapitulates phase 1's caution, now demonstrated** | The appendix (§5, finding 9) warned that PC2/PC3 rotate between fits. This shows it happening across two real analyses, and is why PC indices must not be compared between tables |
-| 11 | Excluding treated cells costs 2 of 138 lines but leaves donors unchanged at 20 | **New (methodological)** | Both dropped lines are pool5, the lowest-yield pool at D52 (median 609 cells/line vs 3,485 in pool1) |
+| 4 | `phat_NB` (neuroblast proportion) remains D11's strongest *and technically cleanest* composition feature (pool η² 0.035) | **Recapitulates phase 1, and the authors' indirect observation** | They noted a poor-differentiation cluster correlating with D11 neuroblast proportion. Phase 1 made it the top direct predictor; it survives the outcome change with the same sign |
+| 5 | **At D30 the transcriptome adds nothing beyond cell-type composition** — 3 of 4 models select k = 0 PCs; permutation Δ 0.360 for proportions vs 0.018 for the best PC | **New** | A 20× gap. Not addressed by the authors, who did not build D30 predictors |
 
 ### What this does *not* establish
 

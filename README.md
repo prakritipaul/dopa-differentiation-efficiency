@@ -29,11 +29,28 @@ dopaminergic fate, multiplexed into pools, sampled at D11, D30 and D52.
 | Binary label | success = ≥ 0.2 → **61 success / 75 failure** |
 | Outcome shape | unimodal, median 0.165, range 0.010–0.742 |
 
+## Cell types and notation
+
+`phat_X` denotes the **estimated proportion** of cell type *X* in a line — the
+"hat" marks it as an estimate from a finite sample of cells, not a known
+quantity. Proportions sum to 1 within a timepoint.
+
+| label | name | timepoint |
+|---|---|---|
+| `FPP` | **floor-plate progenitor** — the on-target progenitor that gives rise to midbrain dopaminergic neurons | D11, D30, D52 |
+| `P_FPP` | **proliferating floor-plate progenitor** — the same cell type, still cycling | D11, D30, D52 |
+| `NB` | **neuroblast** — early post-mitotic neuronal precursor | D11 |
+| `DA` | **dopaminergic neuron** — the target cell type | D30, D52 |
+| `Sert` | **serotonergic neuron** — a floor-plate-derived neuron of different rostro-caudal identity | D30, D52 |
+| `Epen1` | **ependymal-like 1** — ciliated / choroid-plexus-like off-target fate | D30, D52 |
+| `U_Neur1`, `U_Neur2` | **unassigned neuron 1 / 2** — post-mitotic neurons with no lineage markers; off-target | D30 |
+| `Astro` | **astrocyte** — off-target glial fate | D52 |
+
 ## Features
 
 | | D11 | D30 |
 |---|---|---|
-| annotated cell types | 3 (FPP, NB, P_FPP) | 7 (DA, Sert, FPP, P_FPP, Epen1, U_Neur1/2) |
+| annotated cell types | 3 — floor-plate progenitor, neuroblast, proliferating FPP | 7 — adds dopaminergic, serotonergic, ependymal-like, 2 unassigned neuron types |
 | free proportions in a fit | 2 | 6 |
 | expression | PC1–PC10 from 2,000 HVGs | same |
 | depth-outlier pool excluded from fitting | `pool11` | `pool5` |
