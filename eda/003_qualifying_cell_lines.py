@@ -31,7 +31,7 @@ DATA_FILES = [
 ]
 
 DONOR_RE = re.compile(r"^(HPSI\d+i)-")
-OUT_DIR = Path(__file__).parent / "metadata_eda"
+OUT_DIR = Path(__file__).parent.parent / "metadata_eda"
 TIMEPOINTS = ["D11", "D30", "D52"]
 MIN_CELLS_PER_TIMEPOINT = 10
 

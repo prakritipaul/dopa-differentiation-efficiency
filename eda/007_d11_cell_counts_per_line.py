@@ -16,7 +16,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import pandas as pd
 
-OUT_DIR = Path(__file__).parent / "metadata_eda"
+OUT_DIR = Path(__file__).parent.parent / "metadata_eda"
 ALL_COUNTS_CSV = OUT_DIR / "cohort/cell_line_donor_pool_timepoint_n_cells.csv"
 QUALIFYING_COMBOS_CSV = OUT_DIR / "cohort/qualifying_cell_line_pool_min10_per_timepoint.csv"
 

@@ -65,7 +65,7 @@ def make_table(obs: pd.DataFrame, group_cols: list[str]) -> pd.DataFrame:
     )
 
 
-OUT_DIR = Path(__file__).parent / "metadata_eda"
+OUT_DIR = Path(__file__).parent.parent / "metadata_eda"
 
 
 def main() -> None:

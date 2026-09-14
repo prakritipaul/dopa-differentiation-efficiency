@@ -40,7 +40,7 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
-OUT_DIR = Path(__file__).parent / "metadata_eda"
+OUT_DIR = Path(__file__).parent.parent / "metadata_eda"
 QUALIFYING_COMBOS_CSV = OUT_DIR / "cohort/qualifying_cell_line_pool_min10_per_timepoint.csv"
 
 

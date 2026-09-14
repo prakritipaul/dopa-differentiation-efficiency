@@ -50,7 +50,7 @@ def _load_005():
     """005 already streams selected gene columns out of the CSR matrix in
     chunks; reused rather than reimplemented (it is the same operation the
     HVG step performs)."""
-    spec = importlib.util.spec_from_file_location("m005", REPO_ROOT / "005_d11_pca_features.py")
+    spec = importlib.util.spec_from_file_location("m005", REPO_ROOT / "eda/005_d11_pca_features.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module

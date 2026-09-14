@@ -58,7 +58,7 @@ DEPTH_OUTLIER_POOLS = {
 
 
 def _load_module(name: str):
-    path = REPO_ROOT / f"{name}.py"
+    path = REPO_ROOT / "eda" / f"{name}.py"
     spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

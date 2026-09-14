@@ -28,7 +28,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-OUT_DIR = Path(__file__).parent / "metadata_eda"
+OUT_DIR = Path(__file__).parent.parent / "metadata_eda"
 PER_CELL_PCA_CSV = OUT_DIR / "pca/d11_pca_coords_per_cell_qualifying.csv"
 QUALIFYING_COMBOS_CSV = OUT_DIR / "cohort/qualifying_cell_line_pool_min10_per_timepoint.csv"
 N_PCS = 10

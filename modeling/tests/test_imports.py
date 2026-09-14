@@ -14,7 +14,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).parent.parent.parent
 MODULES = sorted(p.stem for p in (REPO_ROOT / "modeling").glob("*.py") if p.stem != "__init__")
-SCRIPTS = sorted(p.name for p in REPO_ROOT.glob("0*.py"))
+SCRIPTS = sorted(p.name for p in (REPO_ROOT / "eda").glob("0*.py"))
 
 
 @pytest.mark.parametrize("name", MODULES)
@@ -27,7 +27,7 @@ def test_numbered_script_imports(name):
     # Numbered EDA scripts aren't a package; load them by path the same way
     # modeling/features.py does. main() is __main__-guarded, so importing
     # only executes module-level definitions.
-    spec = importlib.util.spec_from_file_location(name[:-3], REPO_ROOT / name)
+    spec = importlib.util.spec_from_file_location(name[:-3], REPO_ROOT / "eda" / name)
     spec.loader.exec_module(importlib.util.module_from_spec(spec))
 
 
@@ -45,7 +45,7 @@ def test_numbered_script_output_paths_resolve():
 
     out_dir = REPO_ROOT / "metadata_eda"
     broken = []
-    for script in REPO_ROOT.glob("0*.py"):
+    for script in (REPO_ROOT / "eda").glob("0*.py"):
         for m in re.finditer(r'OUT_DIR\s*/\s*f?"([^"]+\.(?:csv|png))"', script.read_text()):
             literal = m.group(1)
             if "/" not in literal:

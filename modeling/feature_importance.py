@@ -76,7 +76,7 @@ QUALIFYING_COMBOS_CSV = REPO_ROOT / "metadata_eda" / "cohort/qualifying_cell_lin
 
 
 def _load_module(name: str):
-    path = REPO_ROOT / f"{name}.py"
+    path = REPO_ROOT / "eda" / f"{name}.py"
     spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -701,7 +701,7 @@ def main(
         if not pca_csv.exists():
             raise SystemExit(
                 f"missing {pca_csv}\nGenerate the full-fit basis first:\n"
-                f"  uv run python 005_d11_pca_features.py --timepoint {timepoint} "
+                f"  uv run python eda/005_d11_pca_features.py --timepoint {timepoint} "
                 f"--label-variant {label_variant} --restrict-to-qualifying "
                 f"--suffix _qualonly_{label_variant}"
             )
@@ -715,7 +715,7 @@ def main(
                 f"The fold-level columns would come from {fold_features_csv.name} while the\n"
                 f"full-fit columns came from the default basis -- a mixed-basis table.\n"
                 f"Generate it first:\n"
-                f"  uv run python 005_d11_pca_features.py --restrict-to-qualifying --suffix {out_suffix}"
+                f"  uv run python eda/005_d11_pca_features.py --restrict-to-qualifying --suffix {out_suffix}"
             )
     print(f"full-fit PCA basis: {(pca_csv or D11_PCA_CSV).name}")
     print(f"fold-level features: {fold_features_csv.name}\n")

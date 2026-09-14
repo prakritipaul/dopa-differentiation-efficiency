@@ -27,7 +27,7 @@ DATA_FILES = [
 ]
 
 DONOR_RE = re.compile(r"^(HPSI\d+i)-")
-OUT_DIR = Path(__file__).parent / "metadata_eda"
+OUT_DIR = Path(__file__).parent.parent / "metadata_eda"
 UMAP_PLOT_MAX_CELLS = 50_000  # downsample for scatter legibility/speed only
 
 

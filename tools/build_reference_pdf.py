@@ -27,7 +27,7 @@ from pathlib import Path
 import markdown
 from pypdf import PdfReader
 
-ROOT = Path(__file__).parent
+ROOT = Path(__file__).parent.parent
 OUT_DIR = ROOT / "build"
 PDF = OUT_DIR / "pluricon_prototype_reference.pdf"
 CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
