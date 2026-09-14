@@ -28,4 +28,5 @@ dev = [
 [tool.pytest.ini_options]
 markers = [
     "slow: streams real single-cell data / runs the extraction pipeline (deselect with -m 'not slow')",
+    "requires_data: needs the h5 files, which are not in the repo; auto-skipped when absent",
 ]
