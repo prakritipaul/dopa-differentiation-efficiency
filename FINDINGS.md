@@ -78,14 +78,63 @@ were scored on fold tables verified to agree on **every** fold's train/test
 membership (34,816 rows compared), so the comparison is paired and any
 difference is attributable to the timepoint alone.
 
-| | **D11 → D52** | **D30 → D52** |
-|---|---|---|
-| ridge — R² | 0.503 ± 0.015 | **0.802 ± 0.009** |
-| ridge — MAE / RMSE | 0.099 / 0.134 | 0.061 / 0.085 |
-| logistic_l2 — ROC-AUC | 0.906 ± 0.008 | **0.945 ± 0.008** |
-| logistic_l2 — PR-AUC | 0.874 | 0.906 |
-| logistic_l2 — balanced acc | 0.834 | 0.877 |
-| logistic_l2 — Brier | 0.125 | 0.090 |
+★ marks the best value in that column among the four fitted rows; **bold**
+marks the pre-registered headline row, which is a separate thing from being
+best. Higher is better everywhere except **Brier, MAE, RMSE and out-of-range**,
+where the star follows the minimum.
+
+The baseline row is what a trivial model scores: always predicting "success"
+for classification, and the training mean for regression. **Sensitivity 1.000
+and F1 0.619 come free from that**, which is why neither is quoted alone.
+
+### D11 → D52 — classification
+
+| model | scheme | ROC-AUC | PR-AUC | balanced acc | sensitivity | specificity | F1 | Brier |
+|---|---|---|---|---|---|---|---|---|
+| **logistic_l2** *(headline)* | plain | 0.902 ± 0.010 | 0.864 ± 0.010 | 0.837 ± 0.015 | 0.856 ± 0.034 | 0.817 ± 0.019 | 0.822 ± 0.017 | 0.129 ± 0.007 |
+| **logistic_l2** *(headline)* | **donor_grouped** | 0.906 ± 0.008 | 0.874 ± 0.012 ★ | 0.834 ± 0.021 | 0.864 ± 0.031 | 0.804 ± 0.026 | 0.821 ± 0.022 | 0.125 ± 0.006 |
+| logistic_l1 | plain | 0.908 ± 0.016 ★ | 0.873 ± 0.018 | 0.839 ± 0.025 ★ | 0.844 ± 0.034 | 0.833 ± 0.022 ★ | 0.824 ± 0.027 | 0.123 ± 0.012 ★ |
+| logistic_l1 | **donor_grouped** | 0.905 ± 0.011 | 0.872 ± 0.012 | 0.837 ± 0.016 | 0.872 ± 0.017 ★ | 0.803 ± 0.025 | 0.825 ± 0.016 ★ | 0.126 ± 0.009 |
+| *trivial baseline* | — | *0.500* | *0.449* | *0.500* | *1.000* | *0.000* | *0.619* | *0.247* |
+
+### D30 → D52 — classification
+
+| model | scheme | ROC-AUC | PR-AUC | balanced acc | sensitivity | specificity | F1 | Brier |
+|---|---|---|---|---|---|---|---|---|
+| **logistic_l2** *(headline)* | plain | 0.938 ± 0.015 | 0.910 ± 0.020 ★ | 0.884 ± 0.012 ★ | 0.885 ± 0.020 ★ | 0.883 ± 0.016 | 0.872 ± 0.013 ★ | 0.092 ± 0.007 |
+| **logistic_l2** *(headline)* | **donor_grouped** | 0.945 ± 0.008 ★ | 0.906 ± 0.019 | 0.877 ± 0.013 | 0.880 ± 0.022 | 0.875 ± 0.009 | 0.865 ± 0.015 | 0.090 ± 0.006 ★ |
+| logistic_l1 | plain | 0.934 ± 0.014 | 0.908 ± 0.022 | 0.881 ± 0.011 | 0.872 ± 0.020 | 0.891 ± 0.014 ★ | 0.869 ± 0.013 | 0.094 ± 0.008 |
+| logistic_l1 | **donor_grouped** | 0.940 ± 0.009 | 0.899 ± 0.023 | 0.870 ± 0.013 | 0.861 ± 0.018 | 0.879 ± 0.015 | 0.856 ± 0.014 | 0.093 ± 0.005 |
+| *trivial baseline* | — | *0.500* | *0.449* | *0.500* | *1.000* | *0.000* | *0.619* | *0.247* |
+
+### D11 → D52 — regression
+
+| model | scheme | R² | MAE | RMSE | out-of-range |
+|---|---|---|---|---|---|
+| **ridge** *(headline)* | plain | 0.515 ± 0.018 ★ | 0.100 ± 0.002 | 0.133 ± 0.002 ★ | 0.056 ± 0.010 |
+| **ridge** *(headline)* | **donor_grouped** | 0.503 ± 0.015 | 0.099 ± 0.001 ★ | 0.134 ± 0.002 | 0.057 ± 0.008 |
+| lasso | plain | 0.514 ± 0.015 | 0.100 ± 0.002 | 0.133 ± 0.002 | 0.050 ± 0.019 ★ |
+| lasso | **donor_grouped** | 0.502 ± 0.023 | 0.100 ± 0.001 | 0.134 ± 0.003 | 0.051 ± 0.011 |
+| *trivial baseline* | — | *0.000* | *0.158* | *0.190* | *0.000* |
+
+### D30 → D52 — regression
+
+| model | scheme | R² | MAE | RMSE | out-of-range |
+|---|---|---|---|---|---|
+| **ridge** *(headline)* | plain | 0.817 ± 0.014 | 0.059 ± 0.002 | 0.081 ± 0.003 | 0.037 ± 0.010 |
+| **ridge** *(headline)* | **donor_grouped** | 0.802 ± 0.009 | 0.061 ± 0.001 | 0.085 ± 0.002 | 0.037 ± 0.006 |
+| lasso | plain | 0.828 ± 0.005 ★ | 0.056 ± 0.001 ★ | 0.079 ± 0.001 ★ | 0.004 ± 0.005 ★ |
+| lasso | **donor_grouped** | 0.811 ± 0.006 | 0.058 ± 0.001 | 0.083 ± 0.001 | 0.010 ± 0.009 |
+| *trivial baseline* | — | *0.000* | *0.158* | *0.190* | *0.000* |
+
+**LOCO and LODO agree with the headline**, so nothing hinges on the 5-fold
+scheme: ROC-AUC 0.912 / 0.908 at D11 and 0.945 / 0.938 at D30; R² 0.501 / 0.505
+and 0.820 / 0.804. Each is a single repeat by construction, so their SD is
+undefined — see [`modeling/results/README.md`](modeling/results/README.md).
+
+**Donor grouping costs almost nothing.** R² 0.515 → 0.503 at D11 and 0.817 →
+0.802 at D30 against plain 5-fold; classification is flat or slightly better.
+Donor leakage is real here but small.
 
 **D11's DA-only numbers are lower than its published DA+Sert ones** (R² 0.503 vs
 0.653, AUC 0.906 vs 0.947). That is **not a regression** — it is a harder
