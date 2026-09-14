@@ -21,18 +21,22 @@ before the pool-then-line two-stage averaging.
 """
 
 import importlib.util
+import sys
 from pathlib import Path
 
 import h5py
 import pandas as pd
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from data_paths import data_file  # noqa: E402  (repo root, added above)
+
 REPO_ROOT = Path(__file__).parent.parent
 QUALIFYING_COMBOS_CSV = REPO_ROOT / "metadata_eda" / "cohort/qualifying_cell_line_pool_min10_per_timepoint.csv"
 
-TIMEPOINT_FILES = {
-    "D11": "/Users/prakritipaul/Documents/2021_jerber/day11.h5",
-    "D30": "/Users/prakritipaul/Documents/2021_jerber/day30.h5",
-}
+# Resolved from data_paths.py at the repo root, which reads JERBER_DATA_DIR.
+# The h5 files are multi-GB and not in the repo; the path used to be hardcoded
+# to one machine's home directory in eight separate files.
+TIMEPOINT_FILES = {tp: data_file(tp) for tp in ("D11", "D30")}
 
 # Depth-outlier pools, excluded from HVG/PCA *fitting* whenever present in a
 # fold's training cells (their cells are still projected, so no line is lost).

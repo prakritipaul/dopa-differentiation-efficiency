@@ -1,11 +1,8 @@
 [project]
-name = "pluricon-prototype"
+name = "dopa-differentiation-efficiency"
 version = "0.1.0"
-description = "Add your description here"
+description = "Predicting day-52 dopaminergic neuron yield from day-11 and day-30 single-cell RNA-seq, across 136 iPSC lines (Jerber et al. 2021)"
 readme = "README.md"
-authors = [
-    { name = "Prakriti Chacha", email = "pprakriti16@gmail.com" }
-]
 requires-python = ">=3.11"
 dependencies = [
     "h5py>=3.16.0",
@@ -15,12 +12,13 @@ dependencies = [
     "scipy>=1.17.1",
 ]
 
-[project.scripts]
-pluricon-prototype = "pluricon_prototype:main"
-
-[build-system]
-requires = ["uv_build>=0.12.9,<0.13.0"]
-build-backend = "uv_build"
+# No [project.scripts] and no build-system: this is a research pipeline, run
+# via `uv run python -m modeling.<module>` and `uv run python eda/<script>.py`,
+# not a library anyone installs. It previously declared a `uv_build` backend
+# and shipped src/pluricon_prototype/, which contained only uv init's
+# hello-world `main()` -- nothing imported it, and the console script it
+# registered just printed a greeting. Removing both means `uv sync` installs
+# the dependencies and nothing else, which is what the project actually needs.
 
 [dependency-groups]
 dev = [
