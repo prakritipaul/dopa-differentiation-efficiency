@@ -42,6 +42,7 @@ See modeling/feature_importance_plan.md for the full design rationale
 """
 
 import importlib.util
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -49,9 +50,10 @@ import pandas as pd
 from scipy.stats import spearmanr
 from sklearn.preprocessing import StandardScaler
 
-from modeling.folds import load_lines_with_label
+from modeling.folds import get_variant, load_lines_with_label
 from modeling.harness import (
     ALL_PC_COLS,
+    proportion_cols,
     ALL_PROPORTION_COLS,
     MODEL_PROPORTION_COLS,
     build_feature_matrix,
@@ -74,7 +76,7 @@ QUALIFYING_COMBOS_CSV = REPO_ROOT / "metadata_eda" / "cohort/qualifying_cell_lin
 
 
 def _load_module(name: str):
-    path = REPO_ROOT / f"{name}.py"
+    path = REPO_ROOT / "eda" / f"{name}.py"
     spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -89,7 +91,70 @@ m008 = _load_module("008_technical_covariate_associations")
 # ---------------------------------------------------------------------------
 
 
-def load_full_fit_features(pca_csv: Path | None = None) -> pd.DataFrame:
+@dataclass(frozen=True)
+class FullFitCtx:
+    """Everything the full-fit columns need, as one object.
+
+    The full-fit columns (coefficient, SHAP, univariate, technical covariate)
+    come from a PCA fit once on all qualifying lines, while the fold-level
+    columns come from the per-fold table. Mixing a basis from one cohort with
+    fold columns from another has already shipped here as a real defect, so
+    these travel together and are validated against each other before anything
+    is written -- see `validate()`."""
+
+    pca_csv: Path
+    fold_features_csv: Path
+    label_variant: str
+    timepoint: str
+
+    def validate(self) -> None:
+        """Check the basis actually matches the variant, by CONTENT.
+
+        A filename is not evidence: it is supplied by the caller and can say
+        anything. What makes the two comparable is that the full-fit basis
+        covers exactly the cohort's lines, so that is what gets checked."""
+        v = get_variant(self.label_variant)
+        cohort = pd.read_csv(v.cohort_csv)
+        pcs = pd.read_csv(self.pca_csv)
+        want, got = set(cohort["cell_line"]), set(pcs["cell_line"])
+        if want != got:
+            raise ValueError(
+                f"{self.pca_csv.name} covers {len(got)} lines but variant "
+                f"{self.label_variant!r} has {len(want)}; "
+                f"{len(want - got)} missing, {len(got - want)} unexpected. The full-fit "
+                f"basis was not built on this cohort, so its columns would describe a "
+                f"different population than the fold-level ones."
+            )
+        ff = pd.read_csv(self.fold_features_csv, usecols=["label_variant"])
+        seen = set(ff["label_variant"].dropna().unique())
+        if seen != {self.label_variant}:
+            raise ValueError(
+                f"{self.fold_features_csv.name} records label_variant {sorted(seen)} "
+                f"but this run is {self.label_variant!r}."
+            )
+
+
+def line_level_proportions(fold_features_csv: Path) -> pd.DataFrame:
+    """Line-level cell-type proportions, recovered from the fold table.
+
+    Proportions have no fitted parameter -- the extractor computes them once
+    and reuses them for every fold -- so one fold's rows carry the same values
+    as any other, and re-running 004 would reproduce them exactly. That is
+    asserted rather than assumed before the slice is used."""
+    ff = pd.read_csv(fold_features_csv)
+    phat = sorted(c for c in ff.columns if c.startswith("phat_"))
+    per_combo = ff.groupby(["cell_line", "pool"], observed=True)[phat]
+    if not (per_combo.nunique() == 1).all().all():
+        raise ValueError(
+            f"{fold_features_csv.name}: proportions differ across folds for some "
+            "(cell_line, pool). They are supposed to be fold-invariant, so recovering "
+            "them from one slice would be wrong."
+        )
+    one = per_combo.first().reset_index()
+    return one.groupby("cell_line", observed=True)[phat].mean().reset_index()
+
+
+def load_full_fit_features(ctx: FullFitCtx | None = None, pca_csv: Path | None = None) -> pd.DataFrame:
     """Line-level D11 features (3 proportions + PC1..PC10) fit on ALL
     qualifying lines (no held-out split) -- reuses 005's global
     (non-pool11) PCA fit and 004's proportions directly.
@@ -102,22 +167,37 @@ def load_full_fit_features(pca_csv: Path | None = None) -> pd.DataFrame:
     other. That exact bug shipped once -- the _qualonly tables carried
     baseline univariate values -- so the caller now passes this
     explicitly."""
-    qualifying_lines = pd.read_csv(QUALIFYING_COMBOS_CSV)["cell_line"].unique()
+    if ctx is None:  # published path, unchanged
+        qualifying_lines = pd.read_csv(QUALIFYING_COMBOS_CSV)["cell_line"].unique()
+        pcs = pd.read_csv(pca_csv or D11_PCA_CSV)
+        pcs = pcs[pcs["cell_line"].isin(qualifying_lines)]
 
-    pcs = pd.read_csv(pca_csv or D11_PCA_CSV)
-    pcs = pcs[pcs["cell_line"].isin(qualifying_lines)]
+        props_long = pd.read_csv(D11_PROPORTIONS_CSV)
+        props_wide = props_long.pivot(index="cell_line", columns="celltype", values="phat").reset_index()
+        props_wide.columns = ["cell_line"] + [f"phat_{c}" for c in props_wide.columns[1:]]
+        n_expected = 138
+    else:
+        v = get_variant(ctx.label_variant)
+        qualifying_lines = pd.read_csv(v.cohort_csv)["cell_line"].unique()
+        pcs = pd.read_csv(ctx.pca_csv)
+        pcs = pcs[pcs["cell_line"].isin(qualifying_lines)]
+        # Proportions come from the fold table rather than 004: they are
+        # fold-invariant, so re-running 004 under this cohort would reproduce
+        # exactly these values and add a second thing to keep in sync.
+        props_wide = line_level_proportions(ctx.fold_features_csv)
+        n_expected = v.n_lines
 
-    props_long = pd.read_csv(D11_PROPORTIONS_CSV)
-    props_wide = props_long.pivot(index="cell_line", columns="celltype", values="phat").reset_index()
-    props_wide.columns = ["cell_line"] + [f"phat_{c}" for c in props_wide.columns[1:]]
-
-    combined = pcs.merge(props_wide, on="cell_line", how="inner")
-    assert len(combined) == 138, f"expected 138 lines, got {len(combined)}"
+    combined = pcs.merge(props_wide, on="cell_line", how="inner", validate="one_to_one")
+    if len(combined) != n_expected:
+        raise ValueError(f"expected {n_expected} lines in the full-fit table, got {len(combined)}")
     return combined
 
 
-def _model_feature_names(k: int) -> list[str]:
-    return MODEL_PROPORTION_COLS + ALL_PC_COLS[:k]
+def _model_feature_names(k: int, model_props: list[str] | None = None) -> list[str]:
+    """model_props defaults to the D11 two-column set for the published path.
+    D30 has seven annotated cell types, so six free coordinates enter a fit
+    rather than two -- passing them in is what makes this timepoint-agnostic."""
+    return (model_props or MODEL_PROPORTION_COLS) + ALL_PC_COLS[:k]
 
 
 # ---------------------------------------------------------------------------
@@ -231,24 +311,26 @@ def _fit_coefficients(
 
 
 def fit_full_model_coefficients(
-    model_spec: ModelSpec, task: str, k: int, params: dict, pca_csv: Path | None = None
+    model_spec: ModelSpec, task: str, k: int, params: dict, pca_csv: Path | None = None,
+    ctx: FullFitCtx | None = None, model_props: list[str] | None = None
 ) -> pd.Series:
-    features = load_full_fit_features(pca_csv)
-    lines = load_lines_with_label()
+    features = load_full_fit_features(ctx, pca_csv)
+    lines = load_lines_with_label(ctx.label_variant if ctx else "published")
     features = features.merge(lines[["cell_line", "diff_efficiency", "success"]], on="cell_line")
 
-    feature_names = _model_feature_names(k)
+    feature_names = _model_feature_names(k, model_props)
     X = features[feature_names].to_numpy()
     y = features["diff_efficiency" if task == "regression" else "success"].to_numpy()
     return _fit_coefficients(model_spec, params, X, y, feature_names)
 
 
 def fold_coefficient_stability(
-    fold_features: pd.DataFrame, lines: pd.DataFrame, scheme: str, task: str, model_spec: ModelSpec, k: int, params: dict
+    fold_features: pd.DataFrame, lines: pd.DataFrame, scheme: str, task: str, model_spec: ModelSpec, k: int, params: dict,
+    model_props: list[str] | None = None,
 ) -> pd.DataFrame:
     y_col = "diff_efficiency" if task == "regression" else "success"
     label_lookup = lines.set_index("cell_line")[y_col]
-    feature_names = _model_feature_names(k)
+    feature_names = _model_feature_names(k, model_props)
 
     fold_keys = fold_features.loc[fold_features["scheme"] == scheme, ["repeat", "fold"]].drop_duplicates()
     rows = []
@@ -285,13 +367,14 @@ def summarize_coefficients(fold_coefs: pd.DataFrame, full_fit_coefs: pd.Series, 
 # ---------------------------------------------------------------------------
 
 
-def univariate_association(task: str, pca_csv: Path | None = None) -> pd.Series:
-    features = load_full_fit_features(pca_csv)
-    lines = load_lines_with_label()
+def univariate_association(task: str, pca_csv: Path | None = None,
+                          ctx: FullFitCtx | None = None) -> pd.Series:
+    features = load_full_fit_features(ctx, pca_csv)
+    lines = load_lines_with_label(ctx.label_variant if ctx else "published")
     df = features.merge(lines[["cell_line", "diff_efficiency", "success"]], on="cell_line")
     y = df["diff_efficiency" if task == "regression" else "success"]
 
-    feature_cols = ALL_PROPORTION_COLS + ALL_PC_COLS
+    feature_cols = proportion_cols(features)[0] + ALL_PC_COLS
     return pd.Series({f: spearmanr(df[f], y)[0] for f in feature_cols})
 
 
@@ -309,6 +392,19 @@ def _score(task: str, y_true: np.ndarray, y_pred: np.ndarray, y_prob: np.ndarray
 
 
 def _fit_predict(model_spec: ModelSpec, params: dict, X_train, y_train, X_test):
+    # Dropping a feature group can leave NOTHING to fit. It happens whenever
+    # the one-SE rule selects k=0 and the grouped-proportions LOCO row then
+    # removes every remaining column -- which is exactly the D30 case, where
+    # the PCs add nothing beyond the cell-type proportions. The right
+    # comparison there is an intercept-only model, i.e. predict the training
+    # mean (or base rate), not a crash. sklearn refuses a zero-column matrix,
+    # so it is handled here rather than by skipping the row, because skipping
+    # would silently omit the single most informative LOCO delta at D30.
+    if X_train.shape[1] == 0:
+        base = float(np.mean(y_train))
+        const = np.full(len(X_test), base)
+        return const, (const if model_spec.task == "classification" else None)
+
     scaler = StandardScaler()
     X_train_s = scaler.fit_transform(X_train)
     X_test_s = scaler.transform(X_test)
@@ -321,7 +417,8 @@ def _fit_predict(model_spec: ModelSpec, params: dict, X_train, y_train, X_test):
 
 
 def paired_loco_deltas(
-    fold_features: pd.DataFrame, lines: pd.DataFrame, scheme: str, task: str, model_spec: ModelSpec, k: int, params: dict
+    fold_features: pd.DataFrame, lines: pd.DataFrame, scheme: str, task: str, model_spec: ModelSpec, k: int, params: dict,
+    model_props: list[str] | None = None,
 ) -> pd.DataFrame:
     """Per feature (PCs individually, FPP/NB individually, and a
     'grouped_proportions' entry dropping both FPP+NB together): paired
@@ -329,10 +426,10 @@ def paired_loco_deltas(
     since removing it lowered the score), averaged across folds."""
     y_col = "diff_efficiency" if task == "regression" else "success"
     label_lookup = lines.set_index("cell_line")[y_col]
-    baseline_features = _model_feature_names(k)
+    baseline_features = _model_feature_names(k, model_props)
 
     drop_targets = {f: [f] for f in baseline_features}
-    drop_targets["grouped_proportions"] = MODEL_PROPORTION_COLS
+    drop_targets["grouped_proportions"] = model_props or MODEL_PROPORTION_COLS
 
     fold_keys = fold_features.loc[fold_features["scheme"] == scheme, ["repeat", "fold"]].drop_duplicates()
     per_fold_deltas = {name: [] for name in drop_targets}
@@ -375,6 +472,7 @@ def paired_permutation_deltas(
     k: int,
     params: dict,
     seed: int = 0,
+    model_props: list[str] | None = None,
 ) -> pd.DataFrame:
     """Per feature (PCs individually; FPP+NB permuted together as one
     group): paired per-fold delta = score_unpermuted - score_permuted
@@ -382,11 +480,11 @@ def paired_permutation_deltas(
     fold boundaries, standard baseline feature set)."""
     y_col = "diff_efficiency" if task == "regression" else "success"
     label_lookup = lines.set_index("cell_line")[y_col]
-    baseline_features = _model_feature_names(k)
+    baseline_features = _model_feature_names(k, model_props)
     pc_cols = [c for c in baseline_features if c.startswith("PC")]
 
     permute_targets = {pc: [pc] for pc in pc_cols}
-    permute_targets["proportions_group"] = MODEL_PROPORTION_COLS
+    permute_targets["proportions_group"] = model_props or MODEL_PROPORTION_COLS
 
     rng = np.random.default_rng(seed)
     fold_keys = fold_features.loc[fold_features["scheme"] == scheme, ["repeat", "fold"]].drop_duplicates()
@@ -438,7 +536,8 @@ def paired_permutation_deltas(
 
 
 def compute_shap_like(
-    full_fit_coefs: pd.Series, feature_names: list[str], pca_csv: Path | None = None
+    full_fit_coefs: pd.Series, feature_names: list[str], pca_csv: Path | None = None,
+    ctx: FullFitCtx | None = None
 ) -> pd.Series:
     """mean |coef_j * z_ij| where z is the STANDARDIZED feature value.
 
@@ -450,7 +549,7 @@ def compute_shap_like(
     wide-scale features (PCs, raw SD ~1-9) relative to narrow ones
     (proportions, raw SD ~0.05). Using z = (x - mean)/std puts every
     feature on the same footing, which is the whole point of the column."""
-    features = load_full_fit_features(pca_csv)
+    features = load_full_fit_features(ctx, pca_csv)
     subset = features[feature_names]
     z = (subset - subset.mean()) / subset.std(ddof=0)
     contributions = z.mul(full_fit_coefs[feature_names], axis=1)
@@ -462,13 +561,15 @@ def compute_shap_like(
 # ---------------------------------------------------------------------------
 
 
-def technical_covariate_association(pca_csv: Path | None = None) -> pd.Series:
-    qualifying = pd.read_csv(QUALIFYING_COMBOS_CSV)[["cell_line", "pool"]]
-    features = load_full_fit_features(pca_csv)
+def technical_covariate_association(pca_csv: Path | None = None,
+                                   ctx: FullFitCtx | None = None) -> pd.Series:
+    combos = QUALIFYING_COMBOS_CSV if ctx is None else get_variant(ctx.label_variant).cohort_csv
+    qualifying = pd.read_csv(combos)[["cell_line", "pool"]]
+    features = load_full_fit_features(ctx, pca_csv)
     df = features.merge(qualifying, on="cell_line", how="inner")
 
     eta_sq = {}
-    for f in ALL_PROPORTION_COLS + ALL_PC_COLS:
+    for f in proportion_cols(features)[0] + ALL_PC_COLS:
         eta_sq[f] = m008.eta_squared_by_pool(df[f], df["pool"])
     return pd.Series(eta_sq)
 
@@ -488,7 +589,7 @@ def bucket_eta_sq(x: float) -> str:
 
 def run_for_model(
     fold_features_csv: Path, results_csv: Path, model_name: str, task: str, scheme: str, metric: str, minimize: bool,
-    out_suffix: str = "", pca_csv: Path | None = None,
+    out_suffix: str = "", pca_csv: Path | None = None, ctx: FullFitCtx | None = None,
 ) -> pd.DataFrame:
     model_spec = next(m for m in models_for_task(task) if m.name == model_name)
     k, params = select_winning_config_one_se(
@@ -496,25 +597,33 @@ def run_for_model(
     )
     print(f"{model_name}: winning config (one-SE rule) k={k}, params={params}")
 
-    feature_names = _model_feature_names(k)
-    full_fit_coefs = fit_full_model_coefficients(model_spec, task, k, params, pca_csv)
-    lines = load_lines_with_label()
-
     fold_features = pd.read_csv(fold_features_csv)
-    fold_coefs = fold_coefficient_stability(fold_features, lines, scheme, task, model_spec, k, params)
+    # Which proportions enter a simultaneous fit is read off the table rather
+    # than hardcoded: 2 at D11 (3 types), 6 at D30 (7 types).
+    all_props, model_props = proportion_cols(fold_features)
+
+    feature_names = _model_feature_names(k, model_props)
+    full_fit_coefs = fit_full_model_coefficients(model_spec, task, k, params, pca_csv, ctx,
+                                                 model_props=model_props)
+    lines = load_lines_with_label(ctx.label_variant if ctx else "published")
+
+    fold_coefs = fold_coefficient_stability(fold_features, lines, scheme, task, model_spec, k, params,
+                                           model_props=model_props)
     coef_summary = summarize_coefficients(fold_coefs, full_fit_coefs, feature_names)
 
-    univariate = univariate_association(task, pca_csv)
-    loco = paired_loco_deltas(fold_features, lines, scheme, task, model_spec, k, params)
-    perm = paired_permutation_deltas(fold_features, lines, scheme, task, model_spec, k, params)
-    shap_like = compute_shap_like(full_fit_coefs, feature_names, pca_csv)
-    tech_cov = technical_covariate_association(pca_csv)
+    univariate = univariate_association(task, pca_csv, ctx)
+    loco = paired_loco_deltas(fold_features, lines, scheme, task, model_spec, k, params,
+                              model_props=model_props)
+    perm = paired_permutation_deltas(fold_features, lines, scheme, task, model_spec, k, params,
+                                     model_props=model_props)
+    shap_like = compute_shap_like(full_fit_coefs, feature_names, pca_csv, ctx)
+    tech_cov = technical_covariate_association(pca_csv, ctx)
 
-    all_features = ALL_PROPORTION_COLS + [f"PC{i}" for i in range(1, k + 1)]
+    all_features = all_props + [f"PC{i}" for i in range(1, k + 1)]
     rows = []
     for feat in all_features:
         is_p_fpp = feat == "phat_P_FPP"
-        is_proportion = feat in ALL_PROPORTION_COLS
+        is_proportion = feat in all_props
         coef_row = coef_summary[coef_summary["feature"] == feat]
         loco_row = loco[loco["feature"] == ("grouped_proportions" if is_p_fpp else feat)]
         # Permutation always groups the proportions (permuting one alone
@@ -552,8 +661,20 @@ def main(
     fold_features_csv: Path = OUT_DIR / "fold_data/fold_features_D11_full.csv",
     out_suffix: str = "",
     pca_csv: Path | None = None,
+    label_variant: str = "published",
+    timepoint: str = "D11",
 ) -> None:
     """All four models, not just the L1 pair.
+
+    label_variant: ONLY "published" is supported, and anything else is refused
+    immediately -- before any data is read or any output created. This module's
+    full-fit columns (coefficient, SHAP, univariate, technical covariate) come
+    from `metadata_eda/pca/d11_pca_coords_per_line.csv`, a global PCA basis fit
+    under the PUBLISHED cohort, while its fold-level columns (LOCO, permutation,
+    selection frequency) would come from the new variant's fold features. That
+    is exactly the mixed-basis table documented in modeling/README.md. Supporting
+    another variant requires re-running 005 against that cohort first; until
+    then, failing loudly beats emitting a table nobody diffs.
 
     The L1 variants (lasso, logistic_l1) are the more informative ones
     here -- only they produce sparsity, so `regularized_to_zero` and
@@ -568,7 +689,25 @@ def main(
     exist -- falling back to the default would silently produce a table
     whose full-fit columns describe one PCA basis and whose fold-level
     columns describe another."""
-    if pca_csv is None and out_suffix:
+    ctx = None
+    if label_variant != "published":
+        # The guard that used to refuse this outright is now SATISFIED rather
+        # than bypassed: the full-fit basis must exist for this cohort, and is
+        # checked by CONTENT (its line set must equal the cohort's), because a
+        # filename is supplied by the caller and proves nothing.
+        prefix = {"D11": "d11", "D30": "d30"}[timepoint]
+        pca_csv = pca_csv or (REPO_ROOT / "metadata_eda" /
+                              f"pca/{prefix}_pca_coords_per_line_qualonly_{label_variant}.csv")
+        if not pca_csv.exists():
+            raise SystemExit(
+                f"missing {pca_csv}\nGenerate the full-fit basis first:\n"
+                f"  uv run python eda/005_d11_pca_features.py --timepoint {timepoint} "
+                f"--label-variant {label_variant} --restrict-to-qualifying "
+                f"--suffix _qualonly_{label_variant}"
+            )
+        ctx = FullFitCtx(pca_csv, fold_features_csv, label_variant, timepoint)
+        ctx.validate()
+    if ctx is None and pca_csv is None and out_suffix:
         pca_csv = D11_PCA_CSV.with_name(f"pca/d11_pca_coords_per_line{out_suffix}.csv")
         if not pca_csv.exists():
             raise SystemExit(
@@ -576,7 +715,7 @@ def main(
                 f"The fold-level columns would come from {fold_features_csv.name} while the\n"
                 f"full-fit columns came from the default basis -- a mixed-basis table.\n"
                 f"Generate it first:\n"
-                f"  uv run python 005_d11_pca_features.py --restrict-to-qualifying --suffix {out_suffix}"
+                f"  uv run python eda/005_d11_pca_features.py --restrict-to-qualifying --suffix {out_suffix}"
             )
     print(f"full-fit PCA basis: {(pca_csv or D11_PCA_CSV).name}")
     print(f"fold-level features: {fold_features_csv.name}\n")
@@ -584,7 +723,7 @@ def main(
     for model_name in ("lasso", "ridge"):
         run_for_model(
             fold_features_csv, OUT_DIR / f"results/results_regression{out_suffix}.csv", model_name, "regression",
-            "donor_grouped", "mae_mean", True, out_suffix=out_suffix, pca_csv=pca_csv,
+            "donor_grouped", "mae_mean", True, out_suffix=out_suffix, pca_csv=pca_csv, ctx=ctx,
         )
     for model_name in ("logistic_l1", "logistic_l2"):
         run_for_model(
@@ -597,6 +736,7 @@ def main(
             False,
             out_suffix=out_suffix,
             pca_csv=pca_csv,
+            ctx=ctx,
         )
 
 
@@ -604,9 +744,13 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--suffix", default="", help="run against fold_features_D11{suffix}.csv and suffix all outputs")
+    parser.add_argument("--suffix", default="", help="run against fold_features_{tp}{suffix}.csv and suffix all outputs")
+    parser.add_argument("--timepoint", default="D11", choices=["D11", "D30"])
+    parser.add_argument("--label-variant", default="published")
     args = parser.parse_args()
     if args.suffix:
-        main(OUT_DIR / f"fold_data/fold_features_D11{args.suffix}.csv", out_suffix=args.suffix)
+        main(OUT_DIR / f"fold_data/fold_features_{args.timepoint}{args.suffix}.csv",
+             out_suffix=f"_{args.timepoint}{args.suffix}" if args.label_variant != "published" else args.suffix,
+             label_variant=args.label_variant, timepoint=args.timepoint)
     else:
         main()

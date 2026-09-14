@@ -34,15 +34,31 @@ TIMEPOINT_FILES = {
     "D30": "/Users/prakritipaul/Documents/2021_jerber/day30.h5",
 }
 
-# Frozen from EDA (005/006/008): pool11 is a severe sequencing-depth batch
-# outlier (~1,900 mean UMI/cell vs ~10,000-18,000 elsewhere). Excluded from
-# HVG/PCA fitting whenever present in a fold's training cells; never tuned
-# based on downstream model performance.
-FROZEN_POOL_EXCLUDE = frozenset({"pool11"})
+# Depth-outlier pools, excluded from HVG/PCA *fitting* whenever present in a
+# fold's training cells (their cells are still projected, so no line is lost).
+# Never tuned on downstream model performance.
+#
+# THE RULE IS PER TIMEPOINT, NOT GLOBAL. It is: a pool is a depth outlier if
+# its median raw UMI/cell is below 1/3 of the median-of-pool-medians at that
+# timepoint. Applied to each timepoint's own depth table it gives:
+#
+#   D11: pool11 ratio 0.137, next-lowest pool12 at 0.747  -> {pool11}
+#   D30: pool5  ratio 0.123, next-lowest pool12 at 0.423  -> {pool5}
+#
+# Both sides of the threshold are a wide gap, so 1/3 is a separator and not a
+# tuned knob; the D11 entry reproduces the value frozen by EDA (005/006/008)
+# exactly. Carrying D11's {pool11} over to D30 unchanged -- which an earlier
+# single global constant did -- would have been wrong twice at D30: pool11 is
+# the DEEPEST pool there (ratio 1.536) while pool5 collapses to ~1,050 median
+# UMI/cell. See modeling/README.md "D30 depth outlier".
+DEPTH_OUTLIER_POOLS = {
+    "D11": frozenset({"pool11"}),
+    "D30": frozenset({"pool5"}),
+}
 
 
 def _load_module(name: str):
-    path = REPO_ROOT / f"{name}.py"
+    path = REPO_ROOT / "eda" / f"{name}.py"
     spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -69,12 +85,19 @@ def compute_pca_features_for_fold(
     held_out_lines: set[str],
     meta: pd.DataFrame | None = None,
     n_pcs: int = 10,
-    exclude_pools: frozenset[str] = FROZEN_POOL_EXCLUDE,
+    exclude_pools: frozenset[str] | None = None,
     restrict_to_combos: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Fit HVGs/PCA on cells excluding held_out_lines and exclude_pools;
     project ALL cells (including held-out lines') into that space.
     Returns a per-cell DataFrame: cell_line, pool, PC1..PCk.
+
+    exclude_pools: None (the default) resolves to THIS TIMEPOINT's depth
+    outliers via DEPTH_OUTLIER_POOLS -- {pool11} at D11, {pool5} at D30.
+    Defaulting to a single global set instead is how the D11 rule would
+    silently follow the pipeline to D30 and exclude the wrong pool; pass an
+    explicit frozenset only to override the rule deliberately (e.g. a
+    sensitivity run), never to restate the default.
 
     restrict_to_combos: optional (cell_line, pool) frame further limiting
     the FIT population to those combos. None (the default) reproduces the
@@ -87,6 +110,8 @@ def compute_pca_features_for_fold(
     path = TIMEPOINT_FILES[timepoint]
     if meta is None:
         meta = load_cell_metadata(timepoint)
+    if exclude_pools is None:
+        exclude_pools = DEPTH_OUTLIER_POOLS[timepoint]
 
     fit_mask = (~meta["cell_line"].isin(held_out_lines)) & (~meta["pool"].isin(exclude_pools))
     if restrict_to_combos is not None:

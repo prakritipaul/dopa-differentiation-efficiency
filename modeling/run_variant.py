@@ -24,6 +24,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from modeling.folds import VARIANTS, get_variant
 from modeling.run_experiment import HEADLINE, HEADLINE_MODEL, run_all, select_headline
 
 OUT_DIR = Path(__file__).parent
@@ -58,14 +59,31 @@ def compare_headline(task: str, baseline_csv: Path, variant: pd.DataFrame) -> pd
     return out
 
 
-def main(suffix: str) -> None:
-    fold_features_csv = OUT_DIR / f"fold_data/fold_features_D11{suffix}.csv"
+def main(suffix: str, timepoint: str = "D11", out_suffix: str | None = None,
+         label_variant: str = "published") -> None:
+    """suffix names the fold-features table to score; out_suffix names the
+    results files. They default to the same string, which is the original
+    D11 behaviour (`_qualonly` in, `_qualonly` out). They must be given
+    separately for D30, whose features table is `_full` -- the same suffix
+    D11's baseline table uses -- while its results must NOT land on D11's
+    `results_{task}_full.csv`. Deriving one from the other silently would be
+    exactly the kind of half-threaded variant flag that produced the
+    mixed-basis importance tables (AGENTS.md invariant 5)."""
+    v = get_variant(label_variant)
+    # The variant suffix is appended by code on BOTH the input and the output,
+    # exactly as the extraction does, so the two cannot drift apart.
+    out_suffix = (suffix if out_suffix is None else out_suffix) + v.suffix
+    fold_features_csv = OUT_DIR / f"fold_data/fold_features_{timepoint}{suffix}{v.suffix}.csv"
     if not fold_features_csv.exists():
-        raise SystemExit(f"missing {fold_features_csv} -- run the extraction with out_suffix={suffix!r} first")
+        raise SystemExit(
+            f"missing {fold_features_csv} -- run the extraction with "
+            f"--timepoint {timepoint} --suffix {suffix!r} "
+            f"--label-variant {label_variant} first"
+        )
 
     for task in ("regression", "classification"):
-        results = run_all(task, fold_features_csv, out_suffix=suffix)
-        out_path = OUT_DIR / f"results/results_{task}{suffix}.csv"
+        results = run_all(task, fold_features_csv, out_suffix=out_suffix, label_variant=label_variant)
+        out_path = OUT_DIR / f"results/results_{task}{out_suffix}.csv"
         out_path.parent.mkdir(parents=True, exist_ok=True)
         results.to_csv(out_path, index=False)
 
@@ -78,4 +96,14 @@ def main(suffix: str) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--suffix", default="_qualonly", help="suffix of the fold-features table to run against")
-    main(parser.parse_args().suffix)
+    parser.add_argument("--timepoint", default="D11", help="which timepoint's fold-features table (D11 or D30)")
+    parser.add_argument(
+        "--out-suffix", default=None,
+        help="suffix for the results files; defaults to --suffix. Required for D30, "
+             "whose features suffix (_full) collides with D11's baseline results.",
+    )
+    parser.add_argument("--label-variant", default="published", choices=sorted(VARIANTS),
+                        help="which cohort+label+threshold bundle to score against")
+    args = parser.parse_args()
+    main(args.suffix, timepoint=args.timepoint, out_suffix=args.out_suffix,
+         label_variant=args.label_variant)

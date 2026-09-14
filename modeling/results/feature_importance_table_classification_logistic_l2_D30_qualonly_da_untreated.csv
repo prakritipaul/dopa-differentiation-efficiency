@@ -1,0 +1,14 @@
+feature,univariate_spearman,coefficient,regularized_to_zero,selection_frequency,loco_delta,loco_note,permutation_delta,permutation_note,shap_mean_abs,technical_covariate_eta2,technical_covariate_label
+phat_DA,0.7918,1.4784,False,1.0,-0.002,individual,0.3601,grouped (all proportions permuted together),1.2918,0.315,Moderate
+phat_Epen1,-0.6135,-0.8147,False,1.0,0.0002,individual,0.3601,grouped (all proportions permuted together),0.6517,0.133,Low
+phat_FPP,-0.5798,-0.5727,False,1.0,-0.0011,individual,0.3601,grouped (all proportions permuted together),0.4703,0.211,Moderate
+phat_P_FPP,-0.482,reference (=1-FPP-NB),,,0.0058,grouped (FPP+NB dropped together),0.3601,grouped (all proportions permuted together),,0.14,Low
+phat_Sert,0.2145,-0.2884,False,1.0,-0.0012,individual,0.3601,grouped (all proportions permuted together),0.2456,0.057,Low
+phat_U_Neur1,-0.4535,-0.4356,False,1.0,-0.0024,individual,0.3601,grouped (all proportions permuted together),0.3252,0.11,Low
+phat_U_Neur2,-0.3094,-0.9569,False,1.0,0.0002,individual,0.3601,grouped (all proportions permuted together),0.4055,0.083,Low
+PC1,0.6796,0.8005,False,1.0,0.0005,individual,0.0181,individual,0.6531,0.518,High (pool-associated)
+PC2,-0.2133,0.1872,False,1.0,-0.0008,individual,-0.0015,individual,0.1514,0.076,Low
+PC3,-0.3015,0.1715,False,1.0,-0.0009,individual,-0.0008,individual,0.1379,0.143,Low
+PC4,0.1825,-0.6438,False,1.0,0.0014,individual,0.0064,individual,0.5304,0.376,Moderate
+PC5,0.5568,0.7995,False,1.0,0.0024,individual,0.0102,individual,0.6101,0.518,High (pool-associated)
+PC6,-0.2009,0.6107,False,1.0,0.0016,individual,0.0096,individual,0.4992,0.406,Moderate

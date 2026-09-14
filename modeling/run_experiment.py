@@ -104,6 +104,7 @@ def run_all(
     out_suffix: str = "",
     out_dir: Path | None = None,
     resume: bool = True,
+    label_variant: str = "published",
 ) -> pd.DataFrame:
     """out_dir: where results_{task}{suffix}.csv and
     nested_selections_{task}{suffix}.csv are written. Defaults to the package
@@ -125,7 +126,18 @@ def run_all(
     hyperparameters, a fix inside harness.py, regenerated features at the same
     path -- is undetectable here. Use resume=False after any of those."""
     fold_features = pd.read_csv(fold_features_csv)
-    lines = load_lines_with_label()
+    lines = load_lines_with_label(label_variant)
+
+    # The features table records which variant produced it. If it disagrees with
+    # the variant being scored, the outcome/cohort/threshold do not match the
+    # features and every number would be quietly wrong -- the fold-features
+    # FILENAME cannot catch this, since a label change need not rename the file.
+    ff_seen = set(fold_features.get("label_variant", pd.Series(dtype=object)).dropna().unique())
+    if ff_seen and ff_seen != {label_variant}:
+        raise ValueError(
+            f"{fold_features_csv.name} was extracted under label_variant {sorted(ff_seen)} "
+            f"but is being scored as {label_variant!r}."
+        )
 
     base_dir = out_dir or OUT_DIR
     res_path = base_dir / f"results/results_{task}{out_suffix}.csv"
@@ -137,6 +149,17 @@ def run_all(
     if res_path.exists():
         if resume:
             prev = pd.read_csv(res_path)
+            # Strict rule for the label, unlike the laxer one below for the
+            # basis filename: a label change is INVISIBLE in that filename, so
+            # an absent column means "provenance unknown", not "compatible".
+            seen_lv = set(prev.get("label_variant", pd.Series(dtype=object)).dropna().unique())
+            if seen_lv != {label_variant}:
+                raise ValueError(
+                    f"{res_path} records label_variant="
+                    f"{sorted(seen_lv) if seen_lv else 'UNRECORDED (no label_variant column)'} "
+                    f"but this run uses {label_variant!r}. Resuming would mix two outcomes in "
+                    f"one results table. Rerun with resume=False, or use a new out_suffix."
+                )
             seen = set(prev.get("fold_features", pd.Series(dtype=object)).dropna().unique())
             if seen and seen != {basis}:
                 raise ValueError(
@@ -185,10 +208,13 @@ def run_all(
             # every scheme that was restored from disk rather than recomputed.
             chunk = pd.concat([flat_summary, nested_summary], ignore_index=True)
             chunk["fold_features"] = basis
+            chunk["label_variant"] = label_variant
             _append(res_path, chunk)
             _append(
                 sel_path,
-                nested_preds.assign(scheme=scheme, pool_correction=correction)[SEL_COLS].drop_duplicates(),
+                nested_preds.assign(scheme=scheme, pool_correction=correction)[SEL_COLS]
+                .drop_duplicates()
+                .assign(label_variant=label_variant),
             )
             print(f"wrote {scheme} (correction={correction})", flush=True)
 
