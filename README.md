@@ -75,8 +75,10 @@ at both timepoints.**
 | Metrics | computed **per repeat**, then averaged — never pooled across repeats |
 | Total | 256 folds, PCA refit for each, per timepoint |
 
-Model per task **pre-registered before looking at results**: donor-grouped +
-nested + ridge / logistic_l2. Both timepoints use **identical fold
+Configuration is chosen by **flat CV + one-SE** — the simplest config within one
+standard error of the grid's best, on donor-grouped folds. **Performance is
+reported from nested CV**, and both numbers are shown: the flat score is the
+selection criterion, not a result. Both timepoints use **identical fold
 assignments**, verified to agree on every fold's train/test membership, so the
 D11-vs-D30 comparison is paired.
 
@@ -87,9 +89,9 @@ per model.
 
 | model | task | grid |
 |---|---|---|
-| ridge *(headline)* | regression | `alpha` ∈ {0.01, 0.1, 1, 10, 100} |
+| ridge *(reported)* | regression | `alpha` ∈ {0.01, 0.1, 1, 10, 100} |
 | lasso | regression | `alpha` ∈ {0.001, 0.01, 0.1, 1, 10} |
-| logistic_l2 *(headline)* | classification | `C` ∈ {0.01, 0.1, 1, 10, 100} |
+| logistic_l2 *(reported)* | classification | `C` ∈ {0.01, 0.1, 1, 10, 100} |
 | logistic_l1 | classification | `C` ∈ {0.01, 0.1, 1, 10, 100} |
 
 `k` ∈ 0–10 for all. Both logistic models use `class_weight="balanced"` and a
@@ -99,14 +101,20 @@ fixed seed. Features standardised on training folds only.
 
 ## Results
 
-Donor-grouped, nested, mean ± SD across 10 repeats.
+Donor-grouped, mean ± SD across 10 repeats. **Nested** is the reported
+out-of-fold performance; **flat** is the score on the grid the config was
+selected from, shown so the selection gap is visible rather than hidden.
 
-| | **D11 → D52** | **D30 → D52** |
-|---|---|---|
-| ridge — R² | 0.503 ± 0.015 | 0.802 ± 0.009 |
-| ridge — MAE | 0.099 | 0.061 |
-| logistic_l2 — ROC-AUC | 0.906 ± 0.008 | 0.945 ± 0.008 |
-| logistic_l2 — Brier | 0.125 | 0.090 |
+| | shipped configuration | features | nested | flat |
+|---|---|---|---|---|
+| **D11 → D52** classification | `logistic_l2`, C = 1.0, k = 4 | `phat_FPP`, `phat_NB` + PC1–PC4 | **0.906** ± 0.008 | 0.918 |
+| **D11 → D52** regression | `ridge`, α = 10.0, k = 7 | same 2 proportions + PC1–PC7 | **0.503** ± 0.015 | 0.506 |
+| **D30 → D52** classification | `logistic_l2`, C = 1.0, k = 6 | 6 proportions + PC1–PC6 | **0.945** ± 0.008 | 0.956 |
+| **D30 → D52** regression | `ridge`, α = 10.0, **k = 0** | 6 proportions, **no PCs** | **0.802** ± 0.009 | 0.812 |
+
+Classification is ROC-AUC, regression R²; MAE is 0.099 (D11) and 0.061 (D30),
+Brier 0.125 and 0.090. `phat_P_FPP` is the reference proportion and never enters
+a fit. Full grids in [FINDINGS.md](FINDINGS.md#4-full-performance-tables).
 
 ### Three findings
 
@@ -192,7 +200,7 @@ two reasons:
 An earlier phase of this project reproduced the authors' definition exactly
 (138 lines, D11 only, ROC-AUC 0.947), which is what made comparison to their
 published result possible. It is retained in
-[FINDINGS.md](FINDINGS.md#appendix--phase-1-the-authors-dasert-outcome).
+[FINDINGS.md](FINDINGS.md#appendix-a--phase-1-the-authors-dasert-outcome).
 
 **The two are not comparable.** `DA+Sert` is bimodal with a real gap at 0.2;
 `DA/all` is unimodal with none, so the same threshold does a different job. A

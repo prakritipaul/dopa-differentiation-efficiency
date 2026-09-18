@@ -66,6 +66,13 @@ with target rank in this range). This changed two decisions:
 Headline (donor_grouped, nested CV, **no pool-correction** -- see
 "Pool-correction dropped" below):
 
+> **Superseded.** These are the phase-1 numbers, produced under a
+> *pre-registered* model per task. The current analysis selects
+> configuration by **flat CV + one-SE** (`feature_importance.select_winning_config_one_se`)
+> and reports performance from **nested CV**, showing both numbers. The
+> section below is kept as written because it is the provenance for the
+> published DA+Sert results -- it is not a description of current practice.
+
 The pre-registration named a specific model per task (**ridge** /
 **logistic_l2**), so those are the headline numbers. The L1 variants
 scored better, but quoting them as "the" headline would be exactly the
@@ -461,7 +468,11 @@ quietly patched, since two of them changed reported numbers.
    "the" headline -- the exact cherry-picking the pre-registration exists
    to prevent. Fixed to filter on the pre-registered model; headline
    numbers are now ridge R2=0.653 and logistic_l2 AUC=0.943, with the L1
-   variants reported as secondary.
+   variants reported as secondary. **The lesson outlives the
+   pre-registration**: whatever declares the model -- a pre-registration
+   then, the one-SE rule now -- the reporting function must filter on it,
+   or the best-scoring row wins by default and the declaration is
+   decorative.
 
 Feature-importance tables are now produced for **all four** models
 (`results/feature_importance_table_{task}_{model}.csv`) rather than just the L1
@@ -1127,8 +1138,11 @@ dropped) shows no configuration dominates. Across 50 outer folds the modal
 choice wins only ~9-10 times, spread over 13-19 distinct configs, with `C`
 ranging the full four orders of magnitude. Full per-fold record in
 `results/nested_selections_{task}{suffix}.csv` (516 rows each). This is why the
-headline is pre-registered and why the one-SE rule is used -- and why any
-single-config coefficient table is one draw from a wide distribution.
+one-SE rule is used rather than the raw grid argmax -- and why any single-config
+coefficient table is one draw from a wide distribution. It is also why the
+reported number comes from nested CV while the *shipped* config comes from
+flat + one-SE: the two answer different questions, and at D30 the nested inner
+loop's modal pick (k=9-10) is not even the config that ships (k=6).
 
 ### Files backing this section
 

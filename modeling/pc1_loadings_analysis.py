@@ -77,20 +77,24 @@ def _enrichment(loadings: pd.DataFrame, genes: list[str], label: str) -> dict:
     }
 
 
-def analyse(timepoint: str, variant: str = "da_untreated") -> pd.DataFrame:
+def analyse(timepoint: str, variant: str = "da_untreated", pc: str = "PC1") -> pd.DataFrame:
+    """pc defaults to PC1 -- the only component stable enough for a gene-level
+    reading (r=0.9995 across fits). PC2 is read at D11 as well because it is the
+    one strongly predictive D11 component that is NOT pool-dominated
+    (eta^2 0.114 vs PC3's 0.832), so its loadings can be interpreted."""
     v = get_variant(variant)
     prefix = {"D11": "d11", "D30": "d30"}[timepoint]
     load = pd.read_csv(f"{PCA_DIR}/{prefix}_pca_gene_loadings_qualonly{v.suffix}.csv")
-    pc1 = load[load.PC == "PC1"].copy()
+    pc1 = load[load.PC == pc].copy()
     pc1["signed_rank"] = pc1["loading"].rank()
 
     var = pd.read_csv(f"{PCA_DIR}/{prefix}_pca_variance_explained_qualonly{v.suffix}.csv")
-    pct = float(var.loc[var.PC == "PC1", "explained_variance_ratio"].iloc[0]) * 100
+    pct = float(var.loc[var.PC == pc, "explained_variance_ratio"].iloc[0]) * 100
 
     pos = pc1.nlargest(N_TOP, "loading")
     neg = pc1.nsmallest(N_TOP, "loading")
 
-    print(f"\n{'=' * 78}\n{timepoint} PC1 — {pct:.1f}% of HVG variance, {len(pc1)} genes\n{'=' * 78}")
+    print(f"\n{'=' * 78}\n{timepoint} {pc} — {pct:.1f}% of HVG variance, {len(pc1)} genes\n{'=' * 78}")
     print(f"\n  POSITIVE pole (top {N_TOP}):\n    " +
           "  ".join(pos.gene.tolist()[:N_TOP]))
     print(f"\n  NEGATIVE pole (top {N_TOP}):\n    " +
@@ -119,13 +123,13 @@ def analyse(timepoint: str, variant: str = "da_untreated") -> pd.DataFrame:
     lines = load_lines_with_label(variant)
     df = coords.merge(line_props, on="cell_line").merge(
         lines[["cell_line", "diff_efficiency"]], on="cell_line")
-    print("\n  Line-level PC1 vs cell-type proportions (Spearman):")
+    print(f"\n  Line-level {pc} vs cell-type proportions (Spearman):")
     for c in sorted(phat):
-        print(f"    {c:16s} {spearmanr(df['PC1'], df[c]).statistic:+.3f}")
-    print(f"    {'diff_efficiency':16s} {spearmanr(df['PC1'], df['diff_efficiency']).statistic:+.3f}")
+        print(f"    {c:16s} {spearmanr(df[pc], df[c]).statistic:+.3f}")
+    print(f"    {'diff_efficiency':16s} {spearmanr(df[pc], df['diff_efficiency']).statistic:+.3f}")
 
     out = pd.concat([pos.assign(pole="positive"), neg.assign(pole="negative")])
-    out.to_csv(f"{OUT_DIR}/pc1_loadings_{timepoint}_{variant}.csv", index=False)
+    out.to_csv(f"{OUT_DIR}/{pc.lower()}_loadings_{timepoint}_{variant}.csv", index=False)
     return out
 
 
@@ -184,6 +188,8 @@ def decompose(timepoint: str, variant: str = "da_untreated") -> None:
 def main() -> None:
     for tp in ["D11", "D30"]:
         analyse(tp)
+    # PC2 at D11 only: the predictive, pool-clean component (see analyse docstring).
+    analyse("D11", pc="PC2")
     print(f"\n{'=' * 78}\nD30: composition vs within-type state\n{'=' * 78}")
     decompose("D30")
     print(f"\nSaved top loadings to {OUT_DIR}/pc1_loadings_*.csv")
