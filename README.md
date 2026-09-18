@@ -114,7 +114,7 @@ selected from, shown so the selection gap is visible rather than hidden.
 
 Classification is ROC-AUC, regression R²; MAE is 0.099 (D11) and 0.061 (D30),
 Brier 0.125 and 0.090. `phat_P_FPP` is the reference proportion and never enters
-a fit. Full grids in [FINDINGS.md](FINDINGS.md#4-full-performance-tables).
+a fit. Full grids in [FINDINGS.md](FINDINGS.md#5-performance-in-full).
 
 ### Three findings
 
