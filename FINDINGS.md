@@ -32,6 +32,13 @@ Methods in [`modeling/README.md`](modeling/README.md); output files in
 
 > **How findings are stated below.** A **bolded line gives what was measured**,
 > with its number. An indented `→` line gives what it may mean.
+>
+> **Notation.** Every signed number written as `ρ` or as "tracks X at +0.8" is a
+> **Spearman rank correlation** across the 136 lines, running −1 to +1; positive
+> means the two rise together. Two quantities are *not* correlations: `R²` is the
+> fraction of variance one thing explains in another, and pool `η²` is the
+> fraction of a feature's variance that goes with the differentiation run. Both
+> run 0 to 1. Where a Pearson correlation is used instead it is named.
 
 ---
 
@@ -173,9 +180,14 @@ best-evidenced result at this timepoint.
 - **`PC2` has the strongest univariate correlation in the table:** ρ −0.626 at
   pool η² 0.114. Its neurogenesis axis is
   `NEUROD1 NHLH1 ELAVL3 DLL3 STMN2 MLLT11 ONECUT2` against
-  `HES1 GPC3 FRZB BMP4 OTX2 CDH2`, with pan-neuronal genes at median rank 1958
-  of 2000 on the neurogenic pole (p = 7.1 × 10⁻⁷). Within a PCA basis it
-  tracks the annotated neuroblast fraction at ρ ≈ +0.8.
+  `HES1 GPC3 FRZB BMP4 OTX2 CDH2`.
+- **The neuronal genes really do sit at one end, rather than being picked out by
+  eye:** ranking all 2,000 genes by their `PC2` loading puts a pre-specified
+  pan-neuronal set at median position **1958 of 2000** (p = 7.1 × 10⁻⁷), where
+  chance would put it near 1000.
+- **It agrees with the cell-type counts:** a line's `PC2` score tracks its
+  annotated neuroblast fraction at ρ ≈ **+0.8**, though only within one PCA
+  basis — see the caveat below.
 
 → `NEUROD1` and `DLL3` opposing `HES1` is the expected signature of Notch
 lateral inhibition [[5]](#references). Gene expression and cell-type calls
@@ -236,8 +248,10 @@ tracing.
 - **Day-30 `PC1` captures 9.8% of variance, nearly double day 11's.**
   Pan-neuronal genes lead (`MLLT11 TUBB2B STMN2 GAP43 MAPT`), with the cell cycle
   at the opposite pole (G2/M median rank 432, p = 5.5 × 10⁻⁸). Composition
-  (R² 0.891) drives it more than within-type cell state (R² 0.484), and it tracks
-  the dopaminergic fraction at +0.846.
+  (R² 0.891) drives it more than within-type cell state (R² 0.484).
+- **Lines with a higher `PC1` score have more dopaminergic neurons:** ρ **+0.846**
+  against the D30 dopaminergic fraction. The axis is reading the same thing the
+  annotation counts.
 
 → It measures neuronal maturation rather than proliferation and largely repeats
 the cell-type counts. It is not a dopaminergic-identity axis: its leading genes
@@ -272,68 +286,30 @@ what a line has already become.
 **Jerber et al. predicted differentiation efficiency from *iPSC-stage bulk
 RNA-seq*, before differentiation** [[10]](#references). This analysis uses
 different predictors, a different outcome, and, in one case, a different
-timepoint.
+timepoint, so nothing here reproduces their result.
 
 > **Two scope limits.** "Not in the source paper" means not in the authors'
 > `Figure_2` notebook and its outcome definition; we did not audit their
-> supplements. And one comparison below is not independent: Puigdevall et al.
+> supplements. And one row below is not independent: Puigdevall et al.
 > [[11]](#references) re-analyse *this same dataset*, so agreement with them
 > confirms the reading of the data, not the biology.
 
-### Against the source paper
+| # | Finding | Status | Basis |
+|---|---|---|---|
+| 1 | D11 scRNA-seq predicts D52 **dopaminergic** yield: ROC-AUC 0.906, R² 0.503 | **Not in the source paper; predictor is new to the field** | They predicted from iPSC-stage bulk; Kim et al. [[14]](#references) predict dopamine-neuron potential from the pluripotent state. Both forecast from *before* differentiation. Forecasting from a snapshot 41 days *into* one, using cell-type composition, we found nowhere |
+| 2 | D30 → D52 dopaminergic yield: ROC-AUC 0.945, R² 0.802 | **Not in the source paper, and largely definitional** | D30 already contains DA cells, so this is construct overlap rather than predictive discovery |
+| 3 | **DA and Sert track independently**: D30 DA → D52 DA ρ +0.932, D30 Sert → D52 DA Pearson **+0.057** | **Independently supported** | Undercuts their combined `diff_efficiency`. The BrainSTEM atlas [[13]](#references) reports forebrain and hindbrain cells make up over half of most midbrain datasets, finds excessive caudalization with serotonergic signatures in one protocol, and states off-target populations inflate reported mDA yields |
+| 4 | `phat_NB` is D11's best-evidenced composition feature (pool η² 0.035); more D11 neuroblasts, fewer D52 dopaminergic neurons | **Corroborated, but not independently** | Recapitulates the authors' indirect observation of a poor-differentiation cluster tracking D11 neuroblast proportion. Puigdevall et al. [[11]](#references) report lines failing by D52 commit earlier at D11 as neuroblasts — same direction, but a re-analysis of this same dataset |
+| 5 | **`phat_Epen1` marks failure** (ρ −0.614): the ciliated, choroid-plexus-like off-target fate | **Independently supported, other lab and protocol** | Liang et al. [[12]](#references) find choroid-plexus epithelial cells are the main non-dopaminergic population in hESC-derived cultures, 27.3% of cells at day 25, and deplete them with CD99. The correlation with outcome is the link their marker work implies |
+| 6 | **`PC2` is a proneural/Notch axis** — `NEUROD1`, `DLL3` against `HES1` | **Standard developmental biology** | Shimojo et al. [[15]](#references) characterise `HES1` maintaining progenitors and its loss releasing them to differentiate |
+| 7 | **At D30 the transcriptome adds nothing beyond composition** — 3 of 4 models select k = 0 PCs; permutation Δ 0.360 vs 0.018 | **No prior art found** | Not addressed by the authors, who built no D30 predictor, and unreported elsewhere as far as we looked |
 
-| # | Finding | Status |
-|---|---|---|
-| 1 | D11 scRNA-seq predicts D52 **dopaminergic** yield: ROC-AUC 0.906, R² 0.503 | Not in the source paper — they predicted from iPSC-stage bulk, and their metric sums DA with Sert |
-| 2 | D30 → D52 dopaminergic yield: ROC-AUC 0.945, R² 0.802 | Not in the source paper, and largely definitional — D30 already contains DA cells |
-| 3 | **DA and Sert track independently**: D30 DA → D52 DA ρ +0.932, D30 Sert → D52 DA Pearson **+0.057** | Undercuts their combined `diff_efficiency`, which presumes the two behave as one quantity |
-| 4 | `phat_NB` is D11's best-evidenced composition feature (pool η² 0.035) | Recapitulates their indirect observation of a poor-differentiation cluster tracking D11 neuroblast proportion |
-| 5 | **At D30 the transcriptome adds nothing beyond composition** — 3 of 4 models select k = 0 PCs; permutation Δ 0.360 vs 0.018 | Not addressed; they built no D30 predictor |
-
-### Against the wider field
-
-- **Premature neurogenesis predicting failure is corroborated, but not
-  independently.** Puigdevall et al. [[11]](#references), re-analysing this
-  dataset, report that lines failing to produce mature neurons by D52 show
-  earlier fate commitment at D11, represented by neuroblasts — the same
-  direction as `phat_NB` here. Their BCOR-mutant lines also proliferate *faster*
-  while producing fewer neurons, which does not sit comfortably beside the
-  reading of D11 `PC1` in [§4](#4-day-11--which-features-predict-and-what-they-suggest);
-  proliferation rate and progenitor-pool share are different quantities, and
-  this analysis measures only the second.
-
-- **The off-target ependymal fate is independently supported, in other hands and
-  other protocols.** Liang et al. [[12]](#references) found choroid-plexus
-  epithelial cells to be the main non-dopaminergic population in hESC-derived
-  cultures — 27.3% of cells at day 25, close to this dataset's day-30 timepoint —
-  and used CD99 to deplete them. The `phat_Epen1` association with failure
-  (ρ −0.614) is the quantitative link to outcome that their marker work implies.
-
-- **The case for dropping Sert from the numerator is now supported from
-  outside.** The BrainSTEM fetal-brain atlas [[13]](#references) reports that
-  forebrain and hindbrain cells make up more than half of most midbrain
-  datasets, that one protocol shows excessive caudalization with prominent
-  serotonergic signatures, and — directly — that off-target populations inflate
-  reported mDA yields across protocols. That is the same objection [§1](#1-what-is-being-predicted-and-why-not-the-published-metric)
-  raises against `(DA+Sert)/all`, reached independently and from a different
-  direction.
-
-- **Predicting differentiation outcome early is an established goal; the
-  predictor here is different.** Kim et al. [[14]](#references) showed miR-371-3
-  in pluripotent cells predicts neural differentiation propensity and in vivo
-  dopamine-neuron engraftment, and Jerber et al. predict from iPSC-stage bulk.
-  Both forecast from *before* differentiation. Forecasting from a snapshot taken
-  41 days *into* a differentiation, using annotated cell-type composition, is a
-  different measurement, and we found no prior instance of it.
-
-- **The `PC2` reading rests on standard developmental biology.** `NEUROD1` and
-  `DLL3` opposing `HES1` is the proneural/Notch relationship Shimojo et al.
-  [[15]](#references) characterised, where `HES1` maintains progenitors and its
-  loss releases them to differentiate.
-
-- **No prior art found for the day-30 composition-versus-expression result.**
-  That six cell-type proportions leave nothing for ten expression components to
-  add is, as far as we looked, unreported.
+> **One tension, recorded rather than smoothed over.** Puigdevall et al. report
+> that their BCOR-mutant lines proliferate *faster* while producing fewer
+> neurons. That does not sit comfortably beside the reading of D11 `PC1` in
+> [§4](#4-day-11--which-features-predict-and-what-they-suggest), where a cycling
+> progenitor pool is the good outcome. Proliferation rate and progenitor-pool
+> share are different quantities, and only the second is measured here.
 
 The underlying floor-plate-based midbrain dopaminergic protocols
 [[6,7]](#references) are efficient but variable between lines and runs. The
