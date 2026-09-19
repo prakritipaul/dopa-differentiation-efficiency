@@ -124,8 +124,20 @@ def _place_labels(df: pd.DataFrame, xlim, ylim) -> list[tuple[int, int, str]]:
     return [chosen_by_index[i] for i in df.index]
 
 
-def plot_timepoint(timepoint: str) -> Path:
+def shared_xmax() -> float:
+    """Largest |SHAP| across both timepoints.
+
+    Both panels are drawn on this one scale so horizontal positions can be
+    compared between them, which is what FINDINGS.md claims of the pair.
+    Per-panel limits silently broke that: D11 reached 1.40 and D30 1.29, so
+    the same distance meant different things in each.
+    """
+    return max(load_importance(tp)["shap_mean_abs"].max() for tp in TIMEPOINTS)
+
+
+def plot_timepoint(timepoint: str, xmax: float | None = None) -> Path:
     df = load_importance(timepoint)
+    xmax = shared_xmax() if xmax is None else xmax
     is_pc = df["feature"].str.startswith("PC")
 
     fig, ax = plt.subplots(figsize=FIG_SIZE)
@@ -133,12 +145,14 @@ def plot_timepoint(timepoint: str) -> Path:
         ax.scatter(
             df.loc[mask, "shap_mean_abs"],
             df.loc[mask, "technical_covariate_eta2"],
-            s=190,
+            s=200,
             color=color,
+            edgecolors="white",
+            linewidths=1.4,
             zorder=3,
         )
 
-    xlim = (-0.04 * df["shap_mean_abs"].max(), df["shap_mean_abs"].max() * 1.12)
+    xlim = (-0.04 * xmax, xmax * 1.12)
     ylim = (-0.06, 1.04)
     ax.set_xlim(*xlim)
     ax.set_ylim(*ylim)
@@ -192,5 +206,6 @@ def plot_timepoint(timepoint: str) -> Path:
 
 
 if __name__ == "__main__":
+    xmax = shared_xmax()
     for tp in TIMEPOINTS:
-        print(f"wrote {plot_timepoint(tp)}")
+        print(f"wrote {plot_timepoint(tp, xmax)}")
