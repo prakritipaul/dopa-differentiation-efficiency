@@ -16,8 +16,9 @@ Four questions:
 4. How do these findings compare with what is currently known in the field?
 
 Data: [Jerber et al. 2021](https://www.nature.com/articles/s41588-021-00801-6)
-— scRNA-seq of iPSC lines differentiated toward midbrain dopaminergic fate,
-multiplexed into pools, sampled at D11, D30 and D52.
+— scRNA-seq of iPSC lines differentiated toward midbrain dopaminergic fate by a
+floor-plate-based protocol [[6,7]](#references), multiplexed into pools, sampled
+at D11, D30 and D52.
 
 | | day 11 — predictor | day 30 — predictor | day 52 — outcome |
 |---|---|---|---|
@@ -255,7 +256,8 @@ tracing.
 
 → It measures neuronal maturation rather than proliferation and largely repeats
 the cell-type counts. It is not a dopaminergic-identity axis: its leading genes
-are neuronal, with no midbrain/DA determinants.
+are pan-neuronal, with none of the midbrain dopaminergic determinants
+[[8]](#references).
 
 ### Expression adds nothing beyond composition
 
@@ -299,25 +301,9 @@ timepoint, so nothing here reproduces their result.
 | # | Finding | Status | Basis |
 |---|---|---|---|
 | 1 | D11 scRNA-seq predicts D52 **dopaminergic** yield: ROC-AUC 0.906, R² 0.503 | **Not in the source paper; not identified in the literature reviewed** | They predicted from iPSC-stage bulk; Kim et al. [[14]](#references) predict dopamine-neuron potential from the pluripotent state. Both forecast from *before* differentiation. Forecasting from a snapshot 41 days *into* one, using cell-type composition, we found nowhere |
-| 2 | `phat_NB` is D11's best-evidenced composition feature (pool η² 0.035); more D11 neuroblasts, fewer D52 dopaminergic neurons | **Corroborated, but not independently** | Recapitulates the authors' indirect observation of a poor-differentiation cluster tracking D11 neuroblast proportion. Puigdevall et al. [[11]](#references) report lines failing by D52 commit earlier at D11 as neuroblasts — same direction, but a re-analysis of this same dataset |
-| 3 | **`phat_Epen1` marks failure** (ρ −0.614): the ciliated, choroid-plexus-like off-target fate | **Independent contextual support** | Liang et al. [[12]](#references) find choroid-plexus epithelial cells are the main non-dopaminergic population in hESC-derived cultures, 27.3% of cells at day 25, and deplete them with CD99. Two limits: they did not measure an association with final yield, so the ρ −0.614 is unreplicated; and `Epen1` and their CPEC are calls from different annotation pipelines, matched on markers (`TTR`, `FOXJ1`, `PIFO`, `RSPH1`) rather than shown to be the same population |
+| 2 | `phat_NB` is D11's best-evidenced composition feature (pool η² 0.035); more D11 neuroblasts, fewer D52 dopaminergic neurons | **Corroborated, but not independently** | Recapitulates the authors' indirect observation of a poor-differentiation cluster tracking D11 neuroblast proportion. Puigdevall et al. [[11]](#references) report lines failing by D52 commit earlier at D11 as neuroblasts — the same direction. But they analysed these same Jerber cells rather than running a new experiment, so they agree with our reading of this dataset; they do not show the effect holds in a different one |
+| 3 | **`phat_Epen1` marks failure** (ρ −0.614): the ciliated, choroid-plexus-like off-target fate | **Independent contextual support** | Liang et al. [[12]](#references) find choroid-plexus epithelial cells are the main non-dopaminergic population in hESC-derived cultures, 27.3% of cells at day 25, and remove them by sorting on CD99 — a protein carried on the surface of those contaminating cells but not the dopaminergic ones, so discarding CD99-positive cells raises the purity of what remains. Two limits: they did not measure an association with final yield, so the ρ −0.614 is unreplicated; and `Epen1` and their CPEC are calls from different annotation pipelines, matched on markers (`TTR`, `FOXJ1`, `PIFO`, `RSPH1`) rather than shown to be the same population |
 | 4 | **`PC2` is a proneural/Notch axis** — `NEUROD1`, `DLL3` against `HES1` | **Interpretation rests on standard developmental biology** | Shimojo et al. [[15]](#references) characterise `HES1` maintaining progenitors and its loss releasing them to differentiate. That grounds the reading of the axis; that *this* component is that axis is our inference from its loadings |
-
-> **One tension, left open.** Puigdevall et al. report that their BCOR-mutant
-> lines proliferate *faster* while producing fewer neurons. That sits against
-> the reading of D11 `PC1` in
-> [§4](#4-day-11--which-features-predict-and-what-they-suggest), where a cycling
-> progenitor pool is the good outcome. We cannot resolve it: a line's `PC1`
-> score rises either because it has more cycling progenitors or because its
-> progenitors run a stronger cycle programme, and these data do not separate
-> the two. `PC1` is also itself run-associated (η² 0.472). Recorded as an open
-> conflict, not explained away.
-
-The underlying floor-plate-based midbrain dopaminergic protocols
-[[6,7]](#references) are efficient but variable between lines and runs. The
-day-30 dopaminergic cells are immature: `SLC6A3` (DAT) is absent, so the label
-counts an annotation, not transporter-positive mature neurons
-[[8]](#references).
 
 ## 7. Conclusions
 
