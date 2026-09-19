@@ -54,7 +54,8 @@ TIMEPOINT_FILES = {tp: data_file(tp) for tp in ("D11", "D30")}
 # exactly. Carrying D11's {pool11} over to D30 unchanged -- which an earlier
 # single global constant did -- would have been wrong twice at D30: pool11 is
 # the DEEPEST pool there (ratio 1.536) while pool5 collapses to ~1,050 median
-# UMI/cell. See modeling/README.md "D30 depth outlier".
+# UMI/cell. The rule and both timepoints' ratios are in modeling/METHODS.md,
+# section 1 ("How features are built, per fold").
 DEPTH_OUTLIER_POOLS = {
     "D11": frozenset({"pool11"}),
     "D30": frozenset({"pool5"}),

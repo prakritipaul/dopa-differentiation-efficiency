@@ -28,7 +28,7 @@ at D11, D30 and D52.
 
 136 lines · 157 `(line, pool)` combinations · 20 donors · 10 differentiation
 pools. Donor-grouped 5-fold × 10 repeats, nested tuning, PCA refit per fold.
-Methods in [`modeling/README.md`](modeling/README.md); output files in
+Methods in [`modeling/METHODS.md`](modeling/METHODS.md); output files in
 [`modeling/results/README.md`](modeling/results/README.md).
 
 > **How findings are stated below.** A **bolded line gives what was measured**,

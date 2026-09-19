@@ -11,8 +11,9 @@ cross-validation. Work on a D30 -> D52 model is starting.
 
 - `README.md` — project overview and headline results.
 - `FINDINGS.md` — results with literature context.
-- `modeling/README.md` — methods, CV design, and a "D30 readiness" section
-  listing what still hardcodes D11.
+- `modeling/METHODS.md` — features, models, CV design, metrics, feature
+  importance.
+- `modeling/README.md` — audit trail, decision records, label-variant machinery.
 - `modeling/docs/` — investigations (pool correction, feature importance).
 
 `src/pluricon_prototype/` is a leftover `uv init` scaffold with a placeholder

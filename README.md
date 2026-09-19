@@ -10,7 +10,7 @@ whether it will produce dopaminergic neurons — early enough to act on it?
 already determined.**
 
 Full write-ups: **[FINDINGS.md](FINDINGS.md)** (results + literature context) ·
-[`modeling/README.md`](modeling/README.md) (methods) ·
+[`modeling/METHODS.md`](modeling/METHODS.md) (methods) ·
 [`modeling/results/README.md`](modeling/results/README.md) (output files)
 
 ---
@@ -224,8 +224,10 @@ ROC-AUC 0.945 ± 0.008 · R² 0.802.
 
 ```
 eda/              numbered 0NN_*.py scripts, run in order — the EDA phase
-modeling/         the pipeline (see modeling/README.md)
-  docs/           methods, PCA interpretation, audit ledger
+modeling/         the pipeline
+  METHODS.md      features, models, CV, metrics, feature importance
+  README.md       audit trail, decision records, label-variant machinery
+  docs/           PCA interpretation, cell-type markers, audit ledger
   results/        every output table (see modeling/results/README.md)
   tests/          pytest suite, incl. a synthetic-data smoke test
 metadata_eda/     EDA outputs: cohort/ pca/ proportions/ qc/ technical/ plots/
@@ -257,7 +259,7 @@ export JERBER_DATA_DIR=/path/to/your/data
 ```
 
 Data: [E-MTAB-10018](https://www.ebi.ac.uk/biostudies/arrayexpress/studies/E-MTAB-10018).
-Pipeline commands in [`modeling/README.md`](modeling/README.md).
+Pipeline commands in [`modeling/METHODS.md`](modeling/METHODS.md).
 
 Python 3.11, [uv](https://docs.astral.sh/uv/).
 
