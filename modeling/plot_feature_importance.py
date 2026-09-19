@@ -41,6 +41,14 @@ GRID = "#d8dcd9"
 
 FIG_SIZE = (11, 6.5)
 LABEL_FONTSIZE = 14
+DPI = 300
+
+# Font stacks, not single names: matplotlib walks the list and falls back,
+# so these render on a machine with none of the preferred faces installed.
+# Optima and PT Sans are deliberately absent -- both lack Greek, and the
+# axis labels carry a literal eta and rho.
+TEXT_FONTS = ["Avenir Next", "Helvetica Neue", "Charter", "DejaVu Sans"]
+TICK_FONTS = ["Menlo", "DejaVu Sans Mono", "monospace"]
 # Drawable area of the axes in points, after tight_layout. Only used to
 # estimate label boxes for collision avoidance, so approximate is fine.
 AXES_W_PTS, AXES_H_PTS = 700, 355
@@ -136,6 +144,11 @@ def shared_xmax() -> float:
 
 
 def plot_timepoint(timepoint: str, xmax: float | None = None) -> Path:
+    with plt.rc_context({"font.family": "sans-serif", "font.sans-serif": TEXT_FONTS}):
+        return _plot(timepoint, xmax)
+
+
+def _plot(timepoint: str, xmax: float | None) -> Path:
     df = load_importance(timepoint)
     xmax = shared_xmax() if xmax is None else xmax
     is_pc = df["feature"].str.startswith("PC")
@@ -170,7 +183,7 @@ def plot_timepoint(timepoint: str, xmax: float | None = None) -> Path:
         )
 
     ax.set_xlabel("Mean |SHAP| — contribution to the prediction", fontsize=15, color=INK, labelpad=14)
-    ax.set_ylabel("Pool $\\eta^2$ — association with the run", fontsize=15, color=INK, labelpad=14)
+    ax.set_ylabel("Pool \u03b7\u00b2 — association with the run", fontsize=15, color=INK, labelpad=14)
     ax.set_yticks([0.0, 0.25, 0.5, 0.75, 1.0])
     ax.xaxis.set_major_locator(MaxNLocator(4, steps=[1, 5, 10]))
     ax.grid(axis="y", color=GRID, linewidth=1.1, zorder=0)
@@ -179,7 +192,7 @@ def plot_timepoint(timepoint: str, xmax: float | None = None) -> Path:
         ax.spines[side].set_visible(False)
     ax.tick_params(length=0, pad=10, labelsize=13, colors=MUTED)
     for tick in ax.get_xticklabels() + ax.get_yticklabels():
-        tick.set_fontname("DejaVu Sans Mono")
+        tick.set_fontfamily(TICK_FONTS)
 
     # Short rules rather than dots in the legend, as in the reference figure.
     ax.legend(
@@ -200,7 +213,7 @@ def plot_timepoint(timepoint: str, xmax: float | None = None) -> Path:
 
     fig.tight_layout()
     out_path = OUT_DIR / f"plot_feature_importance_{timepoint}_da_untreated.png"
-    fig.savefig(out_path, dpi=150)
+    fig.savefig(out_path, dpi=DPI)
     plt.close(fig)
     return out_path
 
