@@ -5,14 +5,13 @@ One scatter per timepoint, from the feature-importance table that
 `feature_importance.py` already writes. Horizontal axis is how much the
 fitted model leans on a feature; vertical axis is how much of that
 feature's across-line variance goes with which differentiation run the
-line went through. The two are independent questions, which is the whole
-point of plotting them against each other -- a feature can be top-right
+line went through. Plotting them against each other separates two
+questions that are easily conflated -- a feature can be top-right
 (important and run-associated, e.g. D11 PC3) or bottom-right (important
 and run-independent, e.g. D11 phat_NB).
 
-No threshold line is drawn. eta^2 runs continuously and no value of it
-has been validated as a transfer test, so a line across the plot would
-assert a cutoff the data does not support.
+No threshold line is drawn: eta^2 runs continuously, so a cutoff would
+assert a distinction the data does not support.
 
 The reference proportion has no SHAP value (it never enters a fit) and is
 dropped rather than plotted at zero.
@@ -25,6 +24,8 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import pandas as pd
+from matplotlib.lines import Line2D
+from matplotlib.ticker import MaxNLocator
 
 RESULTS_DIR = Path(__file__).parent / "results"
 OUT_DIR = Path(__file__).parent / "plots"
@@ -34,6 +35,15 @@ LABEL_VARIANT = "qualonly_da_untreated"
 
 COMPOSITION_COLOR = "#6a9c78"
 EXPRESSION_COLOR = "#2f6b5e"
+INK = "#3d4441"
+MUTED = "#8a8f8c"
+GRID = "#d8dcd9"
+
+FIG_SIZE = (11, 6.5)
+LABEL_FONTSIZE = 14
+# Drawable area of the axes in points, after tight_layout. Only used to
+# estimate label boxes for collision avoidance, so approximate is fine.
+AXES_W_PTS, AXES_H_PTS = 700, 355
 
 # Below this, a feature's across-line variance is mostly not the run.
 # Used only to bold a label, never to filter or bin.
@@ -50,65 +60,129 @@ def load_importance(timepoint: str) -> pd.DataFrame:
     return df.dropna(subset=["shap_mean_abs"]).reset_index(drop=True)
 
 
-def _label_side(df: pd.DataFrame) -> list[bool]:
-    """True where a label goes left of its point instead of right.
+def _place_labels(df: pd.DataFrame, xlim, ylim) -> list[tuple[int, int, str]]:
+    """Offset and alignment for each label, chosen to avoid overlap.
 
-    A label sits to the right by default, which collides when another
-    point sits just to the right at nearly the same height (D30 PC5/PC1).
-    Flipping the left member of such a pair separates them.
+    Labels default to the right of their point. Where that would collide
+    with another label or run off the axes -- the D30 plot has a dense
+    cluster at low |SHAP| and low eta^2 -- successive fallbacks are tried:
+    left, then above and below on either side.
+
+    Boxes are estimated from the character count rather than measured from
+    a renderer. Approximate, but enough to separate the dozen labels these
+    two plots carry.
     """
-    x_span = df["shap_mean_abs"].max() - df["shap_mean_abs"].min()
-    xs = df["shap_mean_abs"].to_numpy()
-    ys = df["technical_covariate_eta2"].to_numpy()
-    return [
-        any(
-            0 < xs[j] - xs[i] < 0.10 * x_span and abs(ys[j] - ys[i]) < 0.04
-            for j in range(len(xs))
-        )
-        for i in range(len(xs))
+    x_pts = AXES_W_PTS / (xlim[1] - xlim[0])
+    y_pts = AXES_H_PTS / (ylim[1] - ylim[0])
+    candidates = [
+        (14, -5, "left"),
+        (-14, -5, "right"),
+        (14, 13, "left"),
+        (-14, 13, "right"),
+        (14, -22, "left"),
+        (-14, -22, "right"),
     ]
+
+    # Markers are obstacles too: a label flipped to the left would
+    # otherwise be free to land on its neighbour's dot.
+    marker_r = 9
+    placed: list[tuple[float, float, float, float]] = [
+        (
+            r["shap_mean_abs"] * x_pts - marker_r,
+            r["technical_covariate_eta2"] * y_pts - marker_r,
+            r["shap_mean_abs"] * x_pts + marker_r,
+            r["technical_covariate_eta2"] * y_pts + marker_r,
+        )
+        for _, r in df.iterrows()
+    ]
+    chosen_by_index = {}
+    # Left to right, so a crowded label claims its slot before its
+    # right-hand neighbour does.
+    for i in df["shap_mean_abs"].sort_values().index:
+        row = df.loc[i]
+        x = row["shap_mean_abs"] * x_pts
+        y = row["technical_covariate_eta2"] * y_pts
+        # Bold labels (the low-eta^2 ones) set wider than regular ones.
+        char_w = 0.78 if row["technical_covariate_eta2"] < LOW_ETA2 else 0.70
+        w = len(row["feature"]) * LABEL_FONTSIZE * char_w
+        h = LABEL_FONTSIZE * 1.3
+        chosen = candidates[0]
+        for dx, dy, ha in candidates:
+            left = x + dx - (w if ha == "right" else 0)
+            box = (left, y + dy - h / 2, left + w, y + dy + h / 2)
+            if box[0] < xlim[0] * x_pts or box[2] > xlim[1] * x_pts:
+                continue
+            if any(
+                box[0] < p[2] and p[0] < box[2] and box[1] < p[3] and p[1] < box[3]
+                for p in placed
+            ):
+                continue
+            chosen = (dx, dy, ha)
+            placed.append(box)
+            break
+        chosen_by_index[i] = chosen
+    return [chosen_by_index[i] for i in df.index]
 
 
 def plot_timepoint(timepoint: str) -> Path:
     df = load_importance(timepoint)
     is_pc = df["feature"].str.startswith("PC")
 
-    fig, ax = plt.subplots(figsize=(7, 5))
-    for mask, color, label in (
-        (~is_pc, COMPOSITION_COLOR, "Composition feature"),
-        (is_pc, EXPRESSION_COLOR, "Expression component"),
-    ):
+    fig, ax = plt.subplots(figsize=FIG_SIZE)
+    for mask, color in ((~is_pc, COMPOSITION_COLOR), (is_pc, EXPRESSION_COLOR)):
         ax.scatter(
             df.loc[mask, "shap_mean_abs"],
             df.loc[mask, "technical_covariate_eta2"],
-            s=70,
+            s=190,
             color=color,
-            label=label,
             zorder=3,
         )
 
-    for (_, row), left in zip(df.iterrows(), _label_side(df)):
+    xlim = (-0.04 * df["shap_mean_abs"].max(), df["shap_mean_abs"].max() * 1.12)
+    ylim = (-0.06, 1.04)
+    ax.set_xlim(*xlim)
+    ax.set_ylim(*ylim)
+
+    for (_, row), (dx, dy, ha) in zip(df.iterrows(), _place_labels(df, xlim, ylim)):
         ax.annotate(
             row["feature"],
             (row["shap_mean_abs"], row["technical_covariate_eta2"]),
             textcoords="offset points",
-            xytext=(-9 if left else 9, -4),
-            ha="right" if left else "left",
-            fontsize=9,
+            xytext=(dx, dy),
+            ha=ha,
+            fontsize=LABEL_FONTSIZE,
             color=EXPRESSION_COLOR if row["feature"].startswith("PC") else COMPOSITION_COLOR,
             fontweight="bold" if row["technical_covariate_eta2"] < LOW_ETA2 else "normal",
         )
 
-    ax.set_xlabel("Mean |SHAP| — contribution to the prediction")
-    ax.set_ylabel("Pool $\\eta^2$ — association with the run")
-    ax.set_ylim(-0.05, 1.0)
-    # Headroom on the right so the rightmost label is not clipped.
-    ax.set_xlim(0, df["shap_mean_abs"].max() * 1.25)
-    ax.grid(axis="y", color="#cccccc", linewidth=0.8, zorder=0)
+    ax.set_xlabel("Mean |SHAP| — contribution to the prediction", fontsize=15, color=INK, labelpad=14)
+    ax.set_ylabel("Pool $\\eta^2$ — association with the run", fontsize=15, color=INK, labelpad=14)
+    ax.set_yticks([0.0, 0.25, 0.5, 0.75, 1.0])
+    ax.xaxis.set_major_locator(MaxNLocator(4, steps=[1, 5, 10]))
+    ax.grid(axis="y", color=GRID, linewidth=1.1, zorder=0)
     ax.set_axisbelow(True)
-    for side in ("top", "right", "left"):
+    for side in ax.spines:
         ax.spines[side].set_visible(False)
-    ax.legend(frameon=False, loc="upper left", bbox_to_anchor=(0, 1.12), ncol=2)
+    ax.tick_params(length=0, pad=10, labelsize=13, colors=MUTED)
+    for tick in ax.get_xticklabels() + ax.get_yticklabels():
+        tick.set_fontname("DejaVu Sans Mono")
+
+    # Short rules rather than dots in the legend, as in the reference figure.
+    ax.legend(
+        handles=[
+            Line2D([], [], color=COMPOSITION_COLOR, lw=3.2, label="Composition feature"),
+            Line2D([], [], color=EXPRESSION_COLOR, lw=3.2, label="Expression component"),
+        ],
+        frameon=False,
+        loc="upper left",
+        bbox_to_anchor=(-0.02, 1.16),
+        ncol=2,
+        fontsize=13,
+        handlelength=1.2,
+        handletextpad=0.6,
+        columnspacing=2.4,
+        labelcolor=INK,
+    )
 
     fig.tight_layout()
     out_path = OUT_DIR / f"plot_feature_importance_{timepoint}_da_untreated.png"

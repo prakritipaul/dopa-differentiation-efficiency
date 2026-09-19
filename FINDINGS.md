@@ -3,10 +3,10 @@
 **Predicting day-52 dopaminergic neuron yield from earlier single-cell
 snapshots**, across 136 iPSC lines.
 
-Practical question: partway through a midbrain differentiation, can you tell
-whether it will produce dopaminergic neurons — early enough to act on it?
+Can a midbrain differentiation be assessed early enough to act on its likely
+dopaminergic-neuron yield?
 
-We set out to learn four things:
+Four questions:
 
 1. Could we build a predictive model?
 2. Which features were most informative, and to what extent were they
@@ -32,16 +32,15 @@ Methods in [`modeling/README.md`](modeling/README.md); output files in
 
 > **How findings are stated below.** A **bolded line gives what was measured**,
 > with its number. An indented `→` line gives what it may mean. The two are
-> never fused into one sentence, because the measurement is evidence and the
-> reading of it is not.
+> never fused into one sentence.
 
 ---
 
 ## 1. What is being predicted, and why not the published metric
 
 The published metric is `(DA + Sert) / all D52 cells`. This project scores
-**`DA / all D52 cells`, untreated cells only** — a deliberate divergence, not a
-bug fix. It changes what every number here means, so it comes first.
+**`DA / all D52 cells`, untreated cells only**. Every result below uses this
+different outcome.
 
 1. **The published metric counts rotenone-treated cells.** D52 alone holds
    219,238 `ROT` against 303,856 `NONE`, interleaved through every qualifying
@@ -52,19 +51,13 @@ bug fix. It changes what every number here means, so it comes first.
 2. **It sums two lineages that behave differently here.** At D30, `phat_DA`
    predicts the D52 dopaminergic fraction at ρ **+0.932**; `phat_Sert` predicts
    the same outcome at Pearson **+0.057**. Dopaminergic and serotonergic neurons
-   arising from distinct rostro-caudal domains of the floor plate is established
-   developmental biology [[4]](#references), not a finding here — but summing
-   them presumes they behave as one quantity for scoring efficiency, and in this
-   cohort they do not.
-
-- **Cohort cost:** dropping treated cells puts 2 lines below the ≥10-cell
-  threshold, giving **136 lines / 157 combinations / 20 donors** against the
-  earlier phase's 138. The donor count is unchanged, so donor-grouped CV keeps
-  its structure.
+   arise from distinct rostro-caudal floor-plate domains [[4]](#references).
+   Summing them presumes they behave as one measure of efficiency; here they do
+   not.
 - **The two outcome families are not comparable and must never be differenced.**
   `DA+Sert` is bimodal with a real gap at 0.2; `DA/all` is unimodal with none,
-  so the same threshold does a different job. A lower number here is a harder
-  target, not a regression. The bridge to the published definition is
+  so the same threshold has a different meaning. A lower number here is a
+  harder target, not a regression. See
   [Appendix C](#appendix-c--phase-1-the-authors-dasert-outcome).
 
 Success is defined as `DA/all` ≥ 0.2, giving **61 success / 75 failure**.
@@ -73,8 +66,8 @@ Success is defined as `DA/all` ≥ 0.2, giving **61 success / 75 failure**.
 
 **Yes — and at day 11 that is a forecast, 41 days ahead of the readout.**
 
-Configuration is chosen by **flat CV + one-SE**: the simplest configuration
-within one standard error of the grid's best, on donor-grouped folds.
+**Flat CV + one-SE** selects the simplest configuration within one standard
+error of the grid's best on donor-grouped folds.
 
 *Selected configuration per task · donor-grouped, 10 repeats*
 
@@ -92,15 +85,13 @@ within one standard error of the grid's best, on donor-grouped folds.
 - Hyperparameters come from nested inner folds that never see the test lines,
   and every PCA is refit per fold on training lines only.
 
-**Why both numbers are shown.** Flat CV is the *selection criterion* — the
-configuration was picked on those folds, so its score there is optimistic.
-Nested CV is the out-of-fold estimate. The gap is small, 0.003 to 0.012, but
-**positive in all four cases**, which is what selection bias looks like and what
-noise does not.
+> **Why both numbers are shown.** Flat CV selects the configuration, so its
+> score is optimistic. Nested CV gives the out-of-fold estimate. The 0.003 to
+> 0.012 gap is **positive in all four cases**, consistent with selection bias.
 
-**What nested CV estimates.** The selection *procedure*, not one fixed
-configuration: each outer fold re-runs the tuning and may land on a different
-`k`. The figure describes running this whole pipeline on new data.
+> **What nested CV estimates.** It estimates the selection *procedure*, not one
+> fixed configuration. Each outer fold retunes and may select a different `k`.
+> The figure represents the full pipeline on new data.
 
 ### One limit on the day-30 model, stated here rather than buried
 
@@ -109,17 +100,15 @@ model: `phat_DA` alone reaches ROC-AUC 0.956 against the model's 0.939, in 10 of
 10 repeats.** The model wins on every probability metric instead — log loss
 0.571 → 0.328 and Brier 0.190 → 0.093, both 10 of 10 repeats.
 
-→ To *rank* lines, one number suffices. To decide whether any single line is
-worth continuing, you need a calibrated probability, and that is what the model
-adds. ROC-AUC alone could not settle the question — at 0.95 it is saturated and
-speaks only to ordering.
+→ One number suffices to *rank* lines. The model adds calibrated probabilities
+for decisions about individual lines. ROC-AUC speaks only to ordering and is
+saturated at 0.95.
 
 ## 3. How much did the donor affect predictions?
 
-**Donor identity does not materially affect how well a line's efficiency is
-predicted.** 134 of 136 lines share a donor with at least one other line
-(20 donors, 6.8 lines per donor, largest 16), so this had to be checked
-directly rather than assumed.
+**Donor identity does not materially affect predictive performance.** 134 of
+136 lines share a donor with at least one other line (20 donors, 6.8 lines per
+donor, largest 16).
 
 *Nested CV, `logistic_l2` / `ridge`, identical folds*
 
@@ -135,28 +124,9 @@ directly rather than assumed.
 donor-leakage signature.** Regression gives up 0.011–0.015 R², the one place a
 small donor effect is visible at all.
 
-→ Performance is not explained by sibling lines from the same donor sitting on
-both sides of a split. It does not follow that donor effects are absent, or that
-the model would generalise beyond these 20 donors.
-
-### Where the outcome's variance actually sits
-
-Variance in D52 efficiency attributable to each grouping, each against a
-2,000-draw permutation null (the null matters: η² rises with group count on its
-own).
-
-| grouping | η² | null median | p |
-|---|---|---|---|
-| differentiation pool (batch) | **0.427** | 0.053 | 0.0000 |
-| donor | 0.273 | 0.136 | 0.0025 |
-| donor, on the same `(line, pool)` rows | 0.234 | 0.119 | 0.0045 |
-| cell line | 0.872 | 0.869 | 0.46 |
-
-- **The run a line went through is associated with more outcome variance than
-  the donor it came from** (0.427 vs 0.273); both exceed their nulls.
-- **The cell-line row is not interpretable.** With 136 groups across 157 rows,
-  η² is at its null (0.872 vs 0.869, p = 0.46) — line identity has too many
-  degrees of freedom for this statistic to say anything.
+→ Performance is not explained by sibling lines appearing on both sides of a
+split. This does not establish that donor effects are absent or that the model
+generalises beyond these 20 donors.
 
 ### The same line, differentiated twice
 
@@ -168,14 +138,12 @@ reproducibility.
 0.191, with 17 of 21 pairs differing by more than twice the binomial
 counting-noise floor.**
 
-→ Run-to-run variation is substantial relative to the between-line variation
-being predicted. This bounds what any predictor built on one run can achieve,
-and it is the most likely reason pool η² exceeds donor η² above. It is a small
-sample and the correlation is not significantly different from zero, so it
-bounds rather than quantifies.
+→ Run-to-run variation is substantial relative to between-line variation. It
+bounds what a predictor built on one run can achieve. The small sample and
+non-significant correlation make this a bound, not a precise estimate.
 
-*These numbers are printed by `modeling/donor_batch_variance.py`, which writes
-no file; they are reproduced by running it from the repository root.*
+> *These numbers come from `modeling/donor_batch_variance.py`, which writes no
+> file. Run it from the repository root to reproduce them.*
 
 ## 4. Day 11 — which features predict, and what they suggest
 
@@ -185,167 +153,147 @@ timepoint is definitional.
 
 ![Day 11: importance against run association](modeling/plots/plot_feature_importance_D11_da_untreated.png)
 
-*Horizontal: mean |SHAP|, how far the feature moves a prediction. Vertical: pool
-η², the share of the feature's across-line variance that goes with which of the
-ten differentiation runs the line went through. **Pool η² measures potential run
-dependence** — not the fraction proven to be technical artefact, and not proof
-that a low-η² feature will transfer. No threshold is drawn: η² runs continuously
-from 0.035 to 0.832 and no value of it has been validated as a transfer test.*
+> *Horizontal: mean |SHAP|, how far the feature moves a prediction. Vertical:
+> pool η², the share of across-line variance associated with the ten
+> differentiation runs. **Pool η² measures potential run dependence**, not proven
+> technical artefact or transferability.*
 
 ### The most important feature is also the most run-associated
 
-**`PC3` leads on both counts: the largest contribution of any feature
-(mean |SHAP| 1.398, LOCO Δ +0.064, 4.7× `phat_NB`'s) and the highest run
-association (pool η² 0.832).**
+- **`PC3` leads on both counts:** the largest contribution of any feature
+  (mean |SHAP| 1.398, LOCO Δ +0.064, 4.7× `phat_NB`'s) and the highest run
+  association (pool η² 0.832).
 
 → Both are true and neither cancels the other. The defensible statement is that
 `PC3` materially improves prediction among held-out lines from these runs, while
 whether it ports to a new run is unestablished.
 
-**Its negative pole is a coherent biosynthetic / growth programme —
-`PTMA RANBP1 SNRPB HSP90AA1 PA2G4 NASP TYMS PHGDH PSAT1` — ribosome biogenesis,
-chaperones, nucleotide and serine synthesis, with S-phase genes at median rank
-57 of 2000 (p = 8.1 × 10⁻⁸).**
+- **Its negative pole is a biosynthetic / growth programme:**
+  `PTMA RANBP1 SNRPB HSP90AA1 PA2G4 NASP TYMS PHGDH PSAT1`; ribosome biogenesis,
+  chaperones, nucleotide and serine synthesis; and S-phase genes at median rank
+  57 of 2000 (p = 8.1 × 10⁻⁸).
 
-→ A growth-rate axis is exactly what would differ between culture runs, which
-makes η² = 0.832 unsurprising rather than mysterious. These loadings are
-hypothesis-generating; they should not anchor a biological conclusion.
+→ A growth-rate axis could differ between culture runs. The loadings are
+hypothesis-generating, not a basis for biological conclusions.
 
 ### `phat_NB` — the best-evidenced day-11 feature
 
-**The neuroblast proportion carries the largest negative contribution of any
-composition feature (mean |SHAP| 1.05, ρ −0.554, LOCO Δ +0.014) at pool
-η² 0.035 — an order of magnitude below anything else that contributes.**
+- **The neuroblast proportion has the largest negative contribution of any
+  composition feature:** mean |SHAP| 1.05, ρ −0.554, LOCO Δ +0.014, at pool
+  η² 0.035 — an order of magnitude below any other contributor.
 
-→ Suggests that lines already further along the neurogenic trajectory at day 11
-go on to yield a smaller dopaminergic fraction at day 52. Its low run
-association makes it the feature most likely to mean the same thing in someone
-else's hands, which is why it is the best-evidenced result at this timepoint.
+→ Lines further along the neurogenic trajectory at day 11 may yield a smaller
+dopaminergic fraction at day 52. Its low run association makes this the
+best-evidenced result at this timepoint.
 
 ### `PC2` corroborates it from expression alone
 
-**`PC2` (pool η² 0.114) has the strongest univariate correlation in the table,
-ρ −0.626, and describes a neurogenesis axis:
-`NEUROD1 NHLH1 ELAVL3 DLL3 STMN2 MLLT11 ONECUT2` against
-`HES1 GPC3 FRZB BMP4 OTX2 CDH2`, with pan-neuronal genes at median rank 1958 of
-2000 on the neurogenic pole (p = 7.1 × 10⁻⁷). Within a PCA basis it tracks the
-annotated neuroblast fraction at ρ ≈ +0.8.**
+- **`PC2` has the strongest univariate correlation in the table:** ρ −0.626 at
+  pool η² 0.114. Its neurogenesis axis is
+  `NEUROD1 NHLH1 ELAVL3 DLL3 STMN2 MLLT11 ONECUT2` against
+  `HES1 GPC3 FRZB BMP4 OTX2 CDH2`, with pan-neuronal genes at median rank 1958
+  of 2000 on the neurogenic pole (p = 7.1 × 10⁻⁷). Within a PCA basis it
+  tracks the annotated neuroblast fraction at ρ ≈ +0.8.
 
 → `NEUROD1` and `DLL3` opposing `HES1` is the expected signature of Notch
-lateral inhibition [[5]](#references). Because `PC2` is computed from genes
-alone and never from cell-type calls, counting annotated neuroblasts and reading
-a proneural programme are two independent measurements agreeing — which is what
-makes premature neurogenesis the most trustworthy day-11 reading, more than
-either number alone.
+lateral inhibition [[5]](#references). Gene expression and cell-type calls
+independently support premature neurogenesis as the strongest day-11 reading.
 
-*Caveat on the slot: `PCn` is a position in a per-fold basis, not a fixed axis.
-`PC2` and `PC3` are near-tied in variance and trade places between fits — the
-+0.8 above is 0.81, 0.81, 0.78 and 0.70 in four donor-grouped folds and −0.58 in
-the fifth. Do not compare PC indices across tables.*
+> *`PCn` is a slot in a per-fold basis, not a fixed axis. `PC2` and `PC3` are
+> near-tied in variance and trade places between fits: the +0.8 above is 0.81,
+> 0.81, 0.78 and 0.70 in four donor-grouped folds and −0.58 in the fifth. Do
+> not compare PC indices across tables.*
 
 ### `PC1` — the line's overall gene-expression state
 
-**`PC1` captures 5.4% of the variance across 2,000 highly variable genes and is
-a cell-cycle axis: top loadings `HMGB2 PTTG1 NUSAP1 CENPF TOP2A MKI67`, G2/M
-genes at median rank 1972 of 2000 (p = 3.0 × 10⁻²⁷) [[1,2]](#references), and it
-tracks the proliferating progenitor fraction at +0.829.**
+- **`PC1` captures 5.4% of variance across 2,000 highly variable genes.** Its
+  cell-cycle axis has top loadings `HMGB2 PTTG1 NUSAP1 CENPF TOP2A MKI67`, G2/M
+  genes at median rank 1972 of 2000 (p = 3.0 × 10⁻²⁷) [[1,2]](#references), and
+  tracks the proliferating progenitor fraction at +0.829.
 
-→ This is the one component whose gene content can be read with confidence: it
-replicates across PCA fits at r = 0.9995 with 25 of 25 top genes shared, whereas
-the lower components rotate. It summarises where a line sits on a
-proliferation-versus-differentiation axis — and keeping a cycling progenitor
-pool at day 11 is the good outcome, differentiating early is not, which is the
-same story `phat_NB` tells.
+→ Its gene content is stable: it replicates across PCA fits at r = 0.9995 with
+25 of 25 top genes shared, while lower components rotate. It places lines on a
+proliferation-versus-differentiation axis, consistent with `phat_NB`.
 
-→ Note that `PC1` is *not* the component carrying the prediction — `PC3` is.
-Biological legibility and predictive importance are different properties, and
-here they sit on different components.
+→ `PC1` is *not* the main predictive component; `PC3` is. Biological legibility
+and predictive importance sit on different components.
 
 ## 5. Day 30 — which features predict, and what they suggest
 
-By day 30 the annotation already includes dopaminergic cells, so part of the
-outcome exists in the predictors. This is **construct overlap, not leakage**:
-day 30 and day 52 are separate cells from separate harvests, day 30 precedes day
-52, and no day-52 information enters the features. The defensible claim is *how
-much of the day-52 phenotype is already established by day 30*.
+By day 30, dopaminergic cells are already annotated. This is **construct
+overlap, not leakage**: day 30 and day 52 use separate cells and harvests, and
+no day-52 information enters the features. The question is *how much of the
+day-52 phenotype is established by day 30*.
 
 ![Day 30: importance against run association](modeling/plots/plot_feature_importance_D30_da_untreated.png)
 
-*Same axes and scale as the day-11 figure, so the two are directly comparable.*
+> *Same axes and scale as the day-11 figure.*
 
 ### `phat_DA` — the outcome, already partly visible
 
-**The dopaminergic proportion dominates the model (mean |SHAP| 1.292, ρ +0.792)
-at pool η² 0.315.** Fit-free, with no model and no fitted parameter, it reaches
-ROC-AUC **0.960** [0.922–0.986] on a donor-level bootstrap.
+- **The dopaminergic proportion dominates the model:** mean |SHAP| 1.292,
+  ρ +0.792, at pool η² 0.315.
+- **Fit-free, it reaches ROC-AUC 0.960 [0.922–0.986]** on a donor-level
+  bootstrap.
 
-→ Ranking is already solved at day 30 by counting one cell type. η² 0.315 is the
-lowest of the day-30 proportions, but that is nearly ten times `phat_NB`'s —
-least run-associated *among* these features is not the same as low.
+→ Counting one cell type ranks lines at day 30. η² 0.315 is the lowest among
+day-30 proportions but nearly ten times `phat_NB`'s; relatively low is not low.
 
 ### `phat_Epen1` — where the culture goes when it fails
 
-**The ependymal-like proportion is the second-largest composition contributor
-(mean |SHAP| 0.652) and is negatively associated with the outcome (ρ −0.614) at
-pool η² 0.133.**
+- **The ependymal-like proportion is the second-largest composition
+  contributor:** mean |SHAP| 0.652, ρ −0.614, at pool η² 0.133.
 
-→ `Epen1` is a ciliated, choroid-plexus-like off-target fate that retains
-`SOX2`/`HES1`/`VIM`, so it derives from the same neuroepithelium as the
-on-target progenitors but on a divergent branch. Suggests that failing cultures
-are not simply failing to mature — they are committing elsewhere. Markers
-establish identity, not fate; showing that these cells could not have become
-dopaminergic would need lineage tracing this cross-sectional data cannot do.
+→ `Epen1` is a ciliated, choroid-plexus-like off-target fate retaining
+`SOX2`/`HES1`/`VIM`. Failing cultures may commit elsewhere rather than simply
+fail to mature. Markers establish identity, not fate; that would require lineage
+tracing.
 
 ### `PC1` — the day-11 axis, inverted
 
-**Day-30 `PC1` captures 9.8% of variance, nearly double day 11's, with
-pan-neuronal genes leading (`MLLT11 TUBB2B STMN2 GAP43 MAPT`) and the cell cycle
-at the opposite pole (G2/M median rank 432, p = 5.5 × 10⁻⁸). It is driven by
-composition (R² 0.891) far more than by within-type cell state (R² 0.484), and
-tracks the dopaminergic fraction at +0.846.**
+- **Day-30 `PC1` captures 9.8% of variance, nearly double day 11's.**
+  Pan-neuronal genes lead (`MLLT11 TUBB2B STMN2 GAP43 MAPT`), with the cell cycle
+  at the opposite pole (G2/M median rank 432, p = 5.5 × 10⁻⁸). Composition
+  (R² 0.891) drives it more than within-type cell state (R² 0.484), and it tracks
+  the dopaminergic fraction at +0.846.
 
-→ It now measures neuronal maturation rather than proliferation. Because
-composition explains it nearly twice as well as cell state, it is largely
-re-reading the cell-type counts rather than adding an independent view of them.
-It is not a dopaminergic-identity axis: the leading genes are canonical neuronal
-ones, and midbrain/DA determinants are absent.
+→ It measures neuronal maturation rather than proliferation and largely repeats
+the cell-type counts. It is not a dopaminergic-identity axis: its leading genes
+are neuronal, with no midbrain/DA determinants.
 
 ### Expression adds nothing beyond composition
 
-**Grouped permutation Δ is 0.360 for the proportions against 0.018 for the best
-PC — a twentyfold gap — and day-30 regression selects `k = 0`, no expression
-component at all.**
+- **Grouped permutation Δ is 0.360 for proportions versus 0.018 for the best
+  PC, a twentyfold gap.** Day-30 regression selects `k = 0`: no expression
+  component.
 
-→ The selection rule lands independently where the permutation importances
-already pointed. The two low-η² day-30 components are legible but redundant:
+→ Selection and permutation importance agree. The two low-η² day-30 components
+are legible but redundant:
 `PC2` (η² 0.076) is a motile-cilia programme tracking `phat_Epen1` at +0.706,
-and `PC3` (η² 0.143) is a cell-cycle axis tracking `phat_FPP` at +0.815. Once
-the proportions are in the model, a component that restates them adds nothing —
-they are redundant, not uninformative, which says the day-30 annotation captures
-the same structure the transcriptome shows.
+and `PC3` (η² 0.143) is a cell-cycle axis tracking `phat_FPP` at +0.815. The
+day-30 annotation captures the same structure as the transcriptome.
 
 ### What is left undecided at day 30
 
-**About 31% of day-30 cells are still uncommitted progenitors (`SOX2`⁺/`HES1`⁺/
-VIM-high floor-plate progenitors), against ~48% already arrived and ~20%
-off-target terminal fates. Scoring lines on those undecided cells alone — their
-share of the non-target cells, which discards how many neurons a line has
-already made — predicts the outcome at ROC-AUC 0.727 (ρ +0.452).**
+- **About 31% of day-30 cells remain uncommitted progenitors** (`SOX2`⁺/`HES1`⁺/
+  VIM-high floor-plate progenitors), versus ~48% already arrived and ~20%
+  off-target terminal fates.
+- **The undecided cells alone predict ROC-AUC 0.727 (ρ +0.452).** This measure
+  uses their share of non-target cells and discards how many neurons a line has
+  already made.
 
-→ Better than chance, far worse than counting the neurons. By day 30 most of the
-answer is in what a line has already become, not in what is left to decide.
+→ Better than chance, but worse than counting neurons. Most of the answer is in
+what a line has already become.
 
 ## 6. Comparison with Jerber et al. and the field
 
-**The baseline is worth restating: Jerber et al. predicted differentiation
-efficiency from *iPSC-stage bulk RNA-seq*, before differentiation began.**
-Nothing here reproduces that. These are different predictors, a different
-outcome, and in one case a different timepoint.
+**Jerber et al. predicted differentiation efficiency from *iPSC-stage bulk
+RNA-seq*, before differentiation.** This analysis uses different predictors, a
+different outcome, and, in one case, a different timepoint.
 
-**Scope limit.** "New" below means *not present in the authors' analysis that we
-read* — their `Figure_2` notebook and the outcome definition it encodes. We did
-not audit the full paper or its supplements. Read "new" as "not found where we
-looked", not as a priority claim.
+> **Scope limit.** "New" means *not present in the authors' `Figure_2` notebook
+> and its outcome definition*. We did not audit the full paper or supplements.
+> It is not a priority claim.
 
 | # | Finding | Status | Basis |
 |---|---|---|---|
@@ -355,12 +303,11 @@ looked", not as a priority claim.
 | 4 | `phat_NB` is D11's best-evidenced composition feature (pool η² 0.035) | **Recapitulates the authors' indirect observation** | They noted a poor-differentiation cluster correlating with D11 neuroblast proportion. Here it is a direct predictor, with the same sign under a different outcome |
 | 5 | **At D30 the transcriptome adds nothing beyond cell-type composition** — 3 of 4 models select k = 0 PCs; permutation Δ 0.360 vs 0.018 | **New** | Not addressed by the authors, who did not build D30 predictors |
 
-Two further points of contact with the field. The floor-plate-based midbrain
-dopaminergic protocols this differentiation descends from
-[[6,7]](#references) are efficient but variable between lines and runs, which is
-the variation being predicted here. And the day-30 dopaminergic cells are
-immature — `SLC6A3` (DAT) is absent — so the label counts an annotation, not
-transporter-positive mature neurons [[8]](#references).
+The underlying floor-plate-based midbrain dopaminergic protocols
+[[6,7]](#references) are efficient but variable between lines and runs. The
+day-30 dopaminergic cells are immature: `SLC6A3` (DAT) is absent, so the label
+counts an annotation, not transporter-positive mature neurons
+[[8]](#references).
 
 ## 7. Conclusions
 
@@ -376,9 +323,8 @@ transporter-positive mature neurons [[8]](#references).
   everything and expression adds nothing (permutation Δ 0.360 vs 0.018).
 - **How much did the donor matter? Not much, for prediction.** Donor-grouped and
   plain CV differ by ≤0.007 ROC-AUC, with classification scoring *higher* under
-  donor grouping. Donor explains 27% of outcome variance against the
-  differentiation run's 43%, and the same line differentiated twice agrees only
-  weakly (ρ +0.217, n = 21).
+  donor grouping. The same line differentiated twice agrees only weakly
+  (ρ +0.217, n = 21).
 - **How does it compare with the field?** The authors predicted from iPSC-stage
   bulk RNA-seq, so none of this reproduces their result. The day-11 DA-only
   predictor, the day-30 analysis, and the independence of the dopaminergic and
@@ -504,10 +450,10 @@ membership, so the D11-vs-D30 comparison is paired.
 | `lasso` | lodo | 0.819 | 0.058 | 0.081 | 0.015 |
 | trivial baseline | — | 0.000 | 0.158 | 0.190 | 0.000 |
 
-★ marks the best value per column. No row is privileged: the configuration named
-in §2 is not necessarily the best cell in any column here. `loco` and `lodo` are
-single repeats by construction and carry no SD. Sensitivity 1.000 and F1 0.619
-come free from always predicting "success", which is why neither is quoted alone.
+> ★ marks the best value per column. The configuration in §2 is not necessarily
+> the best cell in each column. `loco` and `lodo` are single repeats and carry no
+> SD. Always predicting "success" gives sensitivity 1.000 and F1 0.619, so
+> neither is quoted alone.
 
 ---
 
@@ -531,9 +477,8 @@ come free from always predicting "success", which is why neither is quoted alone
 | `PC3` | 0.138 | −0.301 | −0.001 | 0.143 |
 | `phat_P_FPP` (reference) | — | −0.482 | +0.006 | 0.140 |
 
-*The ρ column is computed on the fold-averaged model features, which is why
-`phat_DA` reads +0.792 here and +0.932 in the fit-free benchmark below — the
-latter uses the raw line-level proportion. Same association, two aggregations.*
+> *The ρ column uses fold-averaged model features; `phat_DA` is +0.792 here and
+> +0.932 in the fit-free benchmark, which uses the raw line-level proportion.*
 
 **All day-30 LOCO Δ are ≈ 0.** With six correlated proportions plus six PCs,
 dropping any single feature costs nothing measurable — no individual feature is
@@ -555,9 +500,8 @@ day 11 and little at day 30, which follows from day 30's annotation already
 containing the outcome's numerator. It does **not** say day 11's expression
 features would survive a new run — that remains untested at both timepoints.
 
-*"Run-associated" throughout, never "contaminated": a high η² shows a feature
-varies with the differentiation run, which is not the same as showing it is a
-technical artefact.*
+> *"Run-associated" means that a feature varies with differentiation run, not
+> that it is a technical artefact.*
 
 **Fit-free reference lines at day 30**, donor-level bootstrap over 20 donors,
 2,000 resamples. In-sample, so not like-for-like with the cross-validated models
