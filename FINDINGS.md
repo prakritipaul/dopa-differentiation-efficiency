@@ -183,9 +183,12 @@ best-evidenced result at this timepoint.
   `NEUROD1 NHLH1 ELAVL3 DLL3 STMN2 MLLT11 ONECUT2` against
   `HES1 GPC3 FRZB BMP4 OTX2 CDH2`.
 - **The neuronal genes really do sit at one end, rather than being picked out by
-  eye:** ranking all 2,000 genes by their `PC2` loading puts a pre-specified
-  pan-neuronal set at median position **1958 of 2000** (p = 7.1 × 10⁻⁷), where
-  chance would put it near 1000.
+  eye.** Order all 2,000 genes by their `PC2` loading, from the most negative
+  (rank 1) to the most positive (rank 2000). Then look up a list of pan-neuronal
+  genes chosen *before* seeing this result. Half of them land above rank
+  **1958** — packed into the top 2% of the axis, where genes scattered at random
+  would sit around rank 1000. The axis is neuronal identity, not a few
+  convenient genes (p = 7.1 × 10⁻⁷).
 - **It agrees with the cell-type counts:** a line's `PC2` score tracks its
   annotated neuroblast fraction at ρ ≈ **+0.8**, though only within one PCA
   basis — see the caveat below.
@@ -233,6 +236,15 @@ day-52 phenotype is established by day 30*.
 
 → Counting one cell type ranks lines at day 30. η² 0.315 is the lowest among
 day-30 proportions but nearly ten times `phat_NB`'s; relatively low is not low.
+
+> **What "DA" counts.** The day-30 `DA` cells have left the cell cycle
+> (`MKI67` 0.005, `TOP2A` 0.013) and carry the dopamine-synthesis machinery
+> (`TH` 1.78, `DDC` 1.74, `NR4A2` 1.60). But `SLC6A3` — the dopamine
+> transporter, DAT, and a marker of a mature neuron — reads **0.000**, and
+> `PITX3` only 0.06. These are young dopaminergic neurons, not finished ones,
+> so "dopaminergic yield" here means annotated identity rather than
+> demonstrated maturity. Whether they switch DAT on by day 52 was not measured:
+> the marker panel covers day-30 cells only.
 
 ### `phat_Epen1` — where the culture goes when it fails
 
@@ -301,7 +313,7 @@ timepoint, so nothing here reproduces their result.
 | # | Finding | Status | Basis |
 |---|---|---|---|
 | 1 | D11 scRNA-seq predicts D52 **dopaminergic** yield: ROC-AUC 0.906, R² 0.503 | **Not in the source paper; not identified in the literature reviewed** | They predicted from iPSC-stage bulk; Kim et al. [[14]](#references) predict dopamine-neuron potential from the pluripotent state. Both forecast from *before* differentiation. Forecasting from a snapshot 41 days *into* one, using cell-type composition, we found nowhere |
-| 2 | `phat_NB` is D11's best-evidenced composition feature (pool η² 0.035); more D11 neuroblasts, fewer D52 dopaminergic neurons | **Corroborated, but not independently** | Recapitulates the authors' indirect observation of a poor-differentiation cluster tracking D11 neuroblast proportion. Puigdevall et al. [[11]](#references) report lines failing by D52 commit earlier at D11 as neuroblasts — the same direction. But they analysed these same Jerber cells rather than running a new experiment, so they agree with our reading of this dataset; they do not show the effect holds in a different one |
+| 2 | `phat_NB` is D11's best-evidenced composition feature (pool η² 0.035); more D11 neuroblasts, fewer D52 dopaminergic neurons | **Corroborated, but not independently** | Recapitulates the authors' indirect observation of a poor-differentiation cluster tracking D11 neuroblast proportion. Puigdevall et al. [[11]](#references) found the same thing: lines failing by D52 commit earlier at D11 as neuroblasts. They worked from these same Jerber cells, though, so this is a second analysis of one experiment rather than a second experiment |
 | 3 | **`phat_Epen1` marks failure** (ρ −0.614): the ciliated, choroid-plexus-like off-target fate | **Independent contextual support** | Liang et al. [[12]](#references) find choroid-plexus epithelial cells are the main non-dopaminergic population in hESC-derived cultures, 27.3% of cells at day 25, and remove them by sorting on CD99 — a protein carried on the surface of those contaminating cells but not the dopaminergic ones, so discarding CD99-positive cells raises the purity of what remains. Two limits: they did not measure an association with final yield, so the ρ −0.614 is unreplicated; and `Epen1` and their CPEC are calls from different annotation pipelines, matched on markers (`TTR`, `FOXJ1`, `PIFO`, `RSPH1`) rather than shown to be the same population |
 | 4 | **`PC2` is a proneural/Notch axis** — `NEUROD1`, `DLL3` against `HES1` | **Interpretation rests on standard developmental biology** | Shimojo et al. [[15]](#references) characterise `HES1` maintaining progenitors and its loss releasing them to differentiate. That grounds the reading of the axis; that *this* component is that axis is our inference from its loadings |
 
