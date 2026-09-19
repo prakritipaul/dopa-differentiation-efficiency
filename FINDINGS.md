@@ -288,25 +288,30 @@ RNA-seq*, before differentiation** [[10]](#references). This analysis uses
 different predictors, a different outcome, and, in one case, a different
 timepoint, so nothing here reproduces their result.
 
-> **Two scope limits.** "Not in the source paper" means not in the authors'
+> **Three scope limits.** "Not in the source paper" means not in the authors'
 > `Figure_2` notebook and its outcome definition; we did not audit their
-> supplements. And one row below is not independent: Puigdevall et al.
+> supplements. **The wider search was a literature search, not a systematic
+> review**, so "not identified" below means not found where we looked and is
+> never a priority claim. And one row is not independent: Puigdevall et al.
 > [[11]](#references) re-analyse *this same dataset*, so agreement with them
 > confirms the reading of the data, not the biology.
 
 | # | Finding | Status | Basis |
 |---|---|---|---|
-| 1 | D11 scRNA-seq predicts D52 **dopaminergic** yield: ROC-AUC 0.906, R² 0.503 | **Not in the source paper; predictor is new to the field** | They predicted from iPSC-stage bulk; Kim et al. [[14]](#references) predict dopamine-neuron potential from the pluripotent state. Both forecast from *before* differentiation. Forecasting from a snapshot 41 days *into* one, using cell-type composition, we found nowhere |
+| 1 | D11 scRNA-seq predicts D52 **dopaminergic** yield: ROC-AUC 0.906, R² 0.503 | **Not in the source paper; not identified in the literature reviewed** | They predicted from iPSC-stage bulk; Kim et al. [[14]](#references) predict dopamine-neuron potential from the pluripotent state. Both forecast from *before* differentiation. Forecasting from a snapshot 41 days *into* one, using cell-type composition, we found nowhere |
 | 2 | `phat_NB` is D11's best-evidenced composition feature (pool η² 0.035); more D11 neuroblasts, fewer D52 dopaminergic neurons | **Corroborated, but not independently** | Recapitulates the authors' indirect observation of a poor-differentiation cluster tracking D11 neuroblast proportion. Puigdevall et al. [[11]](#references) report lines failing by D52 commit earlier at D11 as neuroblasts — same direction, but a re-analysis of this same dataset |
-| 3 | **`phat_Epen1` marks failure** (ρ −0.614): the ciliated, choroid-plexus-like off-target fate | **Independently supported, other lab and protocol** | Liang et al. [[12]](#references) find choroid-plexus epithelial cells are the main non-dopaminergic population in hESC-derived cultures, 27.3% of cells at day 25, and deplete them with CD99. The correlation with outcome is the link their marker work implies |
-| 4 | **`PC2` is a proneural/Notch axis** — `NEUROD1`, `DLL3` against `HES1` | **Standard developmental biology** | Shimojo et al. [[15]](#references) characterise `HES1` maintaining progenitors and its loss releasing them to differentiate |
+| 3 | **`phat_Epen1` marks failure** (ρ −0.614): the ciliated, choroid-plexus-like off-target fate | **Independent contextual support** | Liang et al. [[12]](#references) find choroid-plexus epithelial cells are the main non-dopaminergic population in hESC-derived cultures, 27.3% of cells at day 25, and deplete them with CD99. Two limits: they did not measure an association with final yield, so the ρ −0.614 is unreplicated; and `Epen1` and their CPEC are calls from different annotation pipelines, matched on markers (`TTR`, `FOXJ1`, `PIFO`, `RSPH1`) rather than shown to be the same population |
+| 4 | **`PC2` is a proneural/Notch axis** — `NEUROD1`, `DLL3` against `HES1` | **Interpretation rests on standard developmental biology** | Shimojo et al. [[15]](#references) characterise `HES1` maintaining progenitors and its loss releasing them to differentiate. That grounds the reading of the axis; that *this* component is that axis is our inference from its loadings |
 
-> **One tension, recorded rather than smoothed over.** Puigdevall et al. report
-> that their BCOR-mutant lines proliferate *faster* while producing fewer
-> neurons. That does not sit comfortably beside the reading of D11 `PC1` in
+> **One tension, left open.** Puigdevall et al. report that their BCOR-mutant
+> lines proliferate *faster* while producing fewer neurons. That sits against
+> the reading of D11 `PC1` in
 > [§4](#4-day-11--which-features-predict-and-what-they-suggest), where a cycling
-> progenitor pool is the good outcome. Proliferation rate and progenitor-pool
-> share are different quantities, and only the second is measured here.
+> progenitor pool is the good outcome. We cannot resolve it: a line's `PC1`
+> score rises either because it has more cycling progenitors or because its
+> progenitors run a stronger cycle programme, and these data do not separate
+> the two. `PC1` is also itself run-associated (η² 0.472). Recorded as an open
+> conflict, not explained away.
 
 The underlying floor-plate-based midbrain dopaminergic protocols
 [[6,7]](#references) are efficient but variable between lines and runs. The
@@ -330,10 +335,11 @@ counts an annotation, not transporter-positive mature neurons
   plain CV differ by ≤0.007 ROC-AUC, with classification scoring *higher* under
   donor grouping.
 - **How does it compare with the field?** The source paper predicted from
-  iPSC-stage bulk RNA-seq, so none of this reproduces their result. Two findings
-  are independently supported from outside this dataset: the ependymal
-  off-target fate as a failure mode [[12]](#references), and the objection to
-  counting serotonergic neurons toward dopaminergic yield [[13]](#references).
+  iPSC-stage bulk RNA-seq, so none of this reproduces their result. The
+  objection to counting serotonergic neurons toward dopaminergic yield is
+  independently supported [[13]](#references); the ependymal off-target fate
+  has independent contextual support, though its association with yield is
+  unreplicated [[12]](#references).
   The day-11 neuroblast association is corroborated by a re-analysis of this
   same data [[11]](#references), which is not independent replication. We found
   no prior report of the day-30 composition-versus-expression result.
