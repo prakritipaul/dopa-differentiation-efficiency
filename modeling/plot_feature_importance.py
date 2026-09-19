@@ -41,6 +41,10 @@ GRID = "#d8dcd9"
 
 FIG_SIZE = (11, 6.5)
 LABEL_FONTSIZE = 14
+# D30 carries twice as many features as D11 and they cluster at low |SHAP|,
+# so its labels are set smaller to keep them from colliding.
+CROWDED_FONTSIZE = 11
+CROWDED_ABOVE = 8
 DPI = 300
 
 # Font stacks, not single names: matplotlib walks the list and falls back,
@@ -68,6 +72,10 @@ def load_importance(timepoint: str) -> pd.DataFrame:
     return df.dropna(subset=["shap_mean_abs"]).reset_index(drop=True)
 
 
+def _label_fontsize(df: pd.DataFrame) -> int:
+    return CROWDED_FONTSIZE if len(df) > CROWDED_ABOVE else LABEL_FONTSIZE
+
+
 def _place_labels(df: pd.DataFrame, xlim, ylim) -> list[tuple[int, int, str]]:
     """Offset and alignment for each label, chosen to avoid overlap.
 
@@ -80,6 +88,7 @@ def _place_labels(df: pd.DataFrame, xlim, ylim) -> list[tuple[int, int, str]]:
     a renderer. Approximate, but enough to separate the dozen labels these
     two plots carry.
     """
+    fontsize = _label_fontsize(df)
     x_pts = AXES_W_PTS / (xlim[1] - xlim[0])
     y_pts = AXES_H_PTS / (ylim[1] - ylim[0])
     candidates = [
@@ -112,8 +121,8 @@ def _place_labels(df: pd.DataFrame, xlim, ylim) -> list[tuple[int, int, str]]:
         y = row["technical_covariate_eta2"] * y_pts
         # Bold labels (the low-eta^2 ones) set wider than regular ones.
         char_w = 0.78 if row["technical_covariate_eta2"] < LOW_ETA2 else 0.70
-        w = len(row["feature"]) * LABEL_FONTSIZE * char_w
-        h = LABEL_FONTSIZE * 1.3
+        w = len(row["feature"]) * fontsize * char_w
+        h = fontsize * 1.3
         chosen = candidates[0]
         for dx, dy, ha in candidates:
             left = x + dx - (w if ha == "right" else 0)
@@ -177,7 +186,7 @@ def _plot(timepoint: str, xmax: float | None) -> Path:
             textcoords="offset points",
             xytext=(dx, dy),
             ha=ha,
-            fontsize=LABEL_FONTSIZE,
+            fontsize=_label_fontsize(df),
             color=EXPRESSION_COLOR if row["feature"].startswith("PC") else COMPOSITION_COLOR,
             fontweight="bold" if row["technical_covariate_eta2"] < LOW_ETA2 else "normal",
         )
