@@ -168,7 +168,7 @@ Donor-grouped CV, 10 repeats.
   proportions at D11, six at D30.
 - The nested-to-flat gap is small (0.003–0.012) but **positive in all four
   cases** — what selection bias looks like, not what noise does.
-- Full grids in [FINDINGS.md](FINDINGS.md#5-performance-in-full).
+- Full grids in [FINDINGS.md](FINDINGS.md#appendix-a--full-performance-tables).
 
 ### Day 11 — a forecast, 41 days before the readout
 
@@ -280,7 +280,7 @@ two reasons:
 - An earlier phase reproduced the authors' definition exactly — 138 lines, D11
   only, ROC-AUC 0.947 — which is what made comparison to their published result
   possible. Retained in
-  [FINDINGS.md](FINDINGS.md#appendix-a--phase-1-the-authors-dasert-outcome).
+  [FINDINGS.md](FINDINGS.md#appendix-c--phase-1-the-authors-dasert-outcome).
 - **The two are not comparable.** `DA+Sert` is bimodal with a real gap at 0.2;
   `DA/all` is unimodal with none, so the same threshold does a different job. A
   lower number here is a harder target, not a regression.
