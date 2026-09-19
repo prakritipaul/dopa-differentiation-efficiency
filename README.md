@@ -97,26 +97,106 @@ per model.
 `k` ∈ 0–10 for all. Both logistic models use `class_weight="balanced"` and a
 fixed seed. Features standardised on training folds only.
 
+## Metrics
+
+Every metric the harness computes. Hard class calls use p = 0.5, which is a
+different threshold from the 0.2 that defines the *outcome*.
+
+| metric | task | why it is reported |
+|---|---|---|
+| **ROC-AUC** | classification | threshold-free ranking — can lines be sorted by eventual yield |
+| **PR-AUC** | classification | ranking under 61/75 class imbalance, where ROC-AUC is the more optimistic of the two |
+| **Balanced accuracy** | classification | accuracy at p = 0.5, corrected for unequal class sizes |
+| **Sensitivity** / **specificity** | classification | the two error costs kept apart — discarding a line that would have worked, vs. carrying a failing one for 41 more days |
+| **F1** | classification | one number over precision and recall at p = 0.5 |
+| **Brier** | classification | calibration — whether the probability itself is usable, not just its rank order |
+| **R²** | regression | share of across-line variance in the D52 dopaminergic fraction explained |
+| **MAE** | regression | error in DA-fraction units, robust to the long right tail |
+| **RMSE** | regression | same units, penalising the large misses that MAE forgives |
+| **Out-of-range** | regression | fraction of predictions outside [0, 1] — a linear model can predict an impossible fraction |
+| **Log loss**, **accuracy** | classification, comparison only | used in the paired `phat_DA`-vs-model test, where ROC-AUC saturates near 0.95 and cannot settle the question |
+
+**Reported is not the same as tuned.** The nested inner folds select on
+**PR-AUC** (classification) and **negative MAE** (regression), not on the
+ROC-AUC and R² quoted in the results. The flat-CV one-SE configuration pick uses
+`roc_auc_mean` and `mae_mean`.
+
+**Aggregation.** Metrics are computed **per repeat**, over that repeat's
+complete set of out-of-fold predictions, then averaged ± SD across repeats —
+never pooled across repeats. LOCO and LODO are single repeats by construction
+and so carry no SD.
+
+## Feature importance
+
+Six measures, plus one association statistic that is not an importance measure
+at all. They are run together because they answer different questions, and a
+feature can rank high on one and near zero on another.
+
+| measure | what it computes | what it tells us |
+|---|---|---|
+| **Univariate Spearman ρ** | feature against outcome, no model, all 136 lines | direction, and a model-free sanity check; the only column the reference proportion can appear in |
+| **Standardised coefficient** | effect per 1 SD with the other features held fixed | a *conditional* effect, not a marginal one — it can oppose ρ outright (D30 `phat_Sert`: ρ +0.215, coefficient −0.288) |
+| **Selection frequency** | fraction of folds where L1 keeps a non-zero coefficient | stability — whether the sparse model keeps choosing the feature, or it survived on one split |
+| **LOCO Δ** (refit) | refit without the feature on the same folds, `score_with − score_without` | **necessity.** A feature that is real but redundant scores ≈ 0, because the refit recovers it from its correlates |
+| **Grouped permutation Δ** (no refit) | shuffle the column in the test matrix of the already-fitted model | **reliance** — how hard the fitted model leans on it. Proportions are permuted as one block, since they are compositional and shuffling one alone implies an impossible remainder |
+| **Mean \|SHAP\|** | mean \|coefficient × standardised value\| | **magnitude on a common scale** — how far the feature actually moves a prediction, comparable across features |
+| **Pool η²** | share of the feature's across-line variance associated with which of the 10 differentiation runs the line went through | **run dependence, not importance.** High η² does not prove a technical artefact, and low η² does not prove portability — see [Caveats](#caveats) |
+
 ---
 
 ## Results
 
-Donor-grouped, mean ± SD across 10 repeats. **Nested** is the reported
-out-of-fold performance; **flat** is the score on the grid the config was
-selected from, shown so the selection gap is visible rather than hidden.
+Donor-grouped CV, 10 repeats. **Nested** is the reported out-of-fold
+performance. **Flat** is the score on the grid the configuration was selected
+from — shown so the selection gap is visible rather than hidden.
 
-| | shipped configuration | features | nested | flat |
+*Selected configuration per task · donor-grouped, 10 repeats*
+
+| Model | Configuration | Features | Nested | Flat |
 |---|---|---|---|---|
-| **D11 → D52** classification | `logistic_l2`, C = 1.0, k = 4 | `phat_FPP`, `phat_NB` + PC1–PC4 | **0.906** ± 0.008 | 0.918 |
-| **D11 → D52** regression | `ridge`, α = 10.0, k = 7 | same 2 proportions + PC1–PC7 | **0.503** ± 0.015 | 0.506 |
-| **D30 → D52** classification | `logistic_l2`, C = 1.0, k = 6 | 6 proportions + PC1–PC6 | **0.945** ± 0.008 | 0.956 |
-| **D30 → D52** regression | `ridge`, α = 10.0, **k = 0** | 6 proportions, **no PCs** | **0.802** ± 0.009 | 0.812 |
+| D11 classification | `logistic_l2`, C = 1.0, k = 4 | `phat_FPP`, `phat_NB` + PC1–PC4 | **0.906** | 0.918 |
+| D11 regression | `ridge`, α = 10.0, k = 7 | same 2 proportions + PC1–PC7 | **0.503** | 0.506 |
+| D30 classification | `logistic_l2`, C = 1.0, k = 6 | 6 proportions + PC1–PC6 | **0.945** | 0.956 |
+| D30 regression | `ridge`, α = 10.0, **k = 0** | 6 proportions, **no PCs** | **0.802** | 0.812 |
 
-Classification is ROC-AUC, regression R²; MAE is 0.099 (D11) and 0.061 (D30),
-Brier 0.125 and 0.090. `phat_P_FPP` is the reference proportion and never enters
-a fit. Full grids in [FINDINGS.md](FINDINGS.md#5-performance-in-full).
+Classification is ROC-AUC, regression R². SD across the 10 repeats is 0.008,
+0.015, 0.008 and 0.009 respectively. `phat_P_FPP` is the reference proportion
+and never enters a fit, which is why D11 contributes two proportions and D30
+six. The nested-to-flat gap is small (0.003–0.012) but **positive in all four
+cases** — which is what selection bias looks like and what noise does not. Full
+grids in [FINDINGS.md](FINDINGS.md#5-performance-in-full).
 
-### Three findings
+### Day 11 — a forecast, 41 days before the readout
+
+**This is the result that carries the project: at D11 there are no dopaminergic
+neurons to count yet, so the model is forecasting a fate rather than measuring
+one.** ROC-AUC 0.906 ± 0.008, R² 0.503, Brier 0.125, MAE 0.099.
+
+**Four cross-validation schemes agree** — 0.902 plain, 0.906 donor-grouped,
+0.912 leave-one-line-out, 0.908 leave-one-donor-out. Nothing rests on one
+fortunate split.
+
+**Premature neurogenesis predicts failure.** The neuroblast fraction `phat_NB`
+is the strongest and most technically clean composition feature: ρ = −0.554,
+pool η² = 0.035, mean |SHAP| 1.05. The more neuroblasts a line has already made
+by D11, the *fewer* dopaminergic neurons it yields at D52 — consistent with
+lines that exit the cycling floor-plate progenitor pool too early never
+building enough of it.
+
+**The expression side says the same thing independently.** `PC2` (pool η² 0.114,
+ρ = −0.626) is a proneural axis — `NEUROD1 NHLH1 DLL3` against `HES1 OTX2` —
+computed from genes alone, never from cell-type calls, and within a given PCA
+basis it tracks the annotated neuroblast fraction at ρ ≈ +0.8. Counting
+neuroblasts and reading a neurogenic programme converge on one answer. (Within
+a basis: `PC2` is a slot rather than a fixed axis, and it trades places with
+`PC3` in a minority of folds — see [Caveats](#caveats).)
+
+**One caveat kept in view.** The single most influential D11 feature is `PC3`
+(mean |SHAP| 1.40, LOCO Δ +0.064) and it is also the most run-associated of all
+of them (pool η² 0.832). It genuinely improves prediction on held-out lines;
+whether it would port to a differentiation run done elsewhere is untested.
+
+### Day 30 — mostly already decided
 
 **1. D30's advantage is mostly definitional.** Its annotated cell types already
 *include* DA, so the outcome partly exists in the predictors — construct
@@ -137,10 +217,6 @@ proportions vs 0.018 for the best PC.
 
 To *rank* lines, one number suffices. For trustworthy *probabilities*, the model
 earns its keep. AUC alone would mislead either way.
-
-**At D11**, where no such shortcut exists, the neuroblast fraction `phat_NB` is
-the strongest and most technically clean predictor (ρ = −0.55, pool η² = 0.035)
-— more D11 neuroblasts, worse D52 yield.
 
 ## Repository
 
