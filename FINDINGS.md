@@ -31,8 +31,7 @@ Methods in [`modeling/README.md`](modeling/README.md); output files in
 [`modeling/results/README.md`](modeling/results/README.md).
 
 > **How findings are stated below.** A **bolded line gives what was measured**,
-> with its number. An indented `→` line gives what it may mean. The two are
-> never fused into one sentence.
+> with its number. An indented `→` line gives what it may mean.
 
 ---
 
@@ -54,9 +53,9 @@ different outcome.
    arise from distinct rostro-caudal floor-plate domains [[4]](#references).
    Summing them presumes they behave as one measure of efficiency; here they do
    not.
-- **The two outcome families are not comparable and must never be differenced.**
-  `DA+Sert` is bimodal with a real gap at 0.2; `DA/all` is unimodal with none,
-  so the same threshold has a different meaning. A lower number here is a
+- **The two outcome families are not comparable.** `DA+Sert` is bimodal with a
+  real gap at 0.2; `DA/all` is unimodal with none, so the same threshold has a
+  different meaning. A lower number here is a
   harder target, not a regression. See
   [Appendix C](#appendix-c--phase-1-the-authors-dasert-outcome).
 
@@ -128,23 +127,6 @@ small donor effect is visible at all.
 split. This does not establish that donor effects are absent or that the model
 generalises beyond these 20 donors.
 
-### The same line, differentiated twice
-
-21 lines appear in more than one pool, which gives a direct read on
-reproducibility.
-
-**Efficiency agreed only weakly across repeat differentiations: ρ = +0.217
-(n = 21, p = 0.35), median absolute difference 0.103 against a cohort SD of
-0.191, with 17 of 21 pairs differing by more than twice the binomial
-counting-noise floor.**
-
-→ Run-to-run variation is substantial relative to between-line variation. It
-bounds what a predictor built on one run can achieve. The small sample and
-non-significant correlation make this a bound, not a precise estimate.
-
-> *These numbers come from `modeling/donor_batch_variance.py`, which writes no
-> file. Run it from the repository root to reproduce them.*
-
 ## 4. Day 11 — which features predict, and what they suggest
 
 No dopaminergic neurons exist at day 11; the three annotated types are
@@ -155,7 +137,7 @@ timepoint is definitional.
 
 > *Horizontal: mean |SHAP|, how far the feature moves a prediction. Vertical:
 > pool η², the share of across-line variance associated with the ten
-> differentiation runs. **Pool η² measures potential run dependence**, not proven
+> differentiation runs. **Pool η² measures potential run dependence** [[9]](#references), not proven
 > technical artefact or transferability.*
 
 ### The most important feature is also the most run-associated
@@ -285,23 +267,73 @@ day-30 annotation captures the same structure as the transcriptome.
 → Better than chance, but worse than counting neurons. Most of the answer is in
 what a line has already become.
 
-## 6. Comparison with Jerber et al. and the field
+## 6. Comparison with Jerber et al. and the wider literature
 
 **Jerber et al. predicted differentiation efficiency from *iPSC-stage bulk
-RNA-seq*, before differentiation.** This analysis uses different predictors, a
-different outcome, and, in one case, a different timepoint.
+RNA-seq*, before differentiation** [[10]](#references). This analysis uses
+different predictors, a different outcome, and, in one case, a different
+timepoint.
 
-> **Scope limit.** "New" means *not present in the authors' `Figure_2` notebook
-> and its outcome definition*. We did not audit the full paper or supplements.
-> It is not a priority claim.
+> **Two scope limits.** "Not in the source paper" means not in the authors'
+> `Figure_2` notebook and its outcome definition; we did not audit their
+> supplements. And one comparison below is not independent: Puigdevall et al.
+> [[11]](#references) re-analyse *this same dataset*, so agreement with them
+> confirms the reading of the data, not the biology.
 
-| # | Finding | Status | Basis |
-|---|---|---|---|
-| 1 | D11 scRNA-seq predicts D52 **dopaminergic** yield: ROC-AUC 0.906, R² 0.503 | **New** | The authors predicted from iPSC-stage bulk, and their efficiency metric sums DA with Sert; a DA-only D11 → D52 predictor is not part of their analysis |
-| 2 | D30 → D52 dopaminergic yield: ROC-AUC 0.945, R² 0.802 | **New, but largely definitional** | No D30 → D52 predictor in their work. The strength is mostly construct overlap — D30 already contains DA cells — not predictive discovery |
-| 3 | **DA and Sert track independently**: D30 DA → D52 DA ρ = +0.932, D30 Sert → D52 DA Pearson **+0.057** | **New; it undercuts the combined metric** | Their `diff_efficiency` sums the two, presuming they behave as one quantity. They do not: `DA/(DA+Sert)` spreads near-uniformly 0–1 across lines, consistent with a line-intrinsic rostro-caudal identity fixed before D30 [[4]](#references) |
-| 4 | `phat_NB` is D11's best-evidenced composition feature (pool η² 0.035) | **Recapitulates the authors' indirect observation** | They noted a poor-differentiation cluster correlating with D11 neuroblast proportion. Here it is a direct predictor, with the same sign under a different outcome |
-| 5 | **At D30 the transcriptome adds nothing beyond cell-type composition** — 3 of 4 models select k = 0 PCs; permutation Δ 0.360 vs 0.018 | **New** | Not addressed by the authors, who did not build D30 predictors |
+### Against the source paper
+
+| # | Finding | Status |
+|---|---|---|
+| 1 | D11 scRNA-seq predicts D52 **dopaminergic** yield: ROC-AUC 0.906, R² 0.503 | Not in the source paper — they predicted from iPSC-stage bulk, and their metric sums DA with Sert |
+| 2 | D30 → D52 dopaminergic yield: ROC-AUC 0.945, R² 0.802 | Not in the source paper, and largely definitional — D30 already contains DA cells |
+| 3 | **DA and Sert track independently**: D30 DA → D52 DA ρ +0.932, D30 Sert → D52 DA Pearson **+0.057** | Undercuts their combined `diff_efficiency`, which presumes the two behave as one quantity |
+| 4 | `phat_NB` is D11's best-evidenced composition feature (pool η² 0.035) | Recapitulates their indirect observation of a poor-differentiation cluster tracking D11 neuroblast proportion |
+| 5 | **At D30 the transcriptome adds nothing beyond composition** — 3 of 4 models select k = 0 PCs; permutation Δ 0.360 vs 0.018 | Not addressed; they built no D30 predictor |
+
+### Against the wider field
+
+- **Premature neurogenesis predicting failure is corroborated, but not
+  independently.** Puigdevall et al. [[11]](#references), re-analysing this
+  dataset, report that lines failing to produce mature neurons by D52 show
+  earlier fate commitment at D11, represented by neuroblasts — the same
+  direction as `phat_NB` here. Their BCOR-mutant lines also proliferate *faster*
+  while producing fewer neurons, which does not sit comfortably beside the
+  reading of D11 `PC1` in [§4](#4-day-11--which-features-predict-and-what-they-suggest);
+  proliferation rate and progenitor-pool share are different quantities, and
+  this analysis measures only the second.
+
+- **The off-target ependymal fate is independently supported, in other hands and
+  other protocols.** Liang et al. [[12]](#references) found choroid-plexus
+  epithelial cells to be the main non-dopaminergic population in hESC-derived
+  cultures — 27.3% of cells at day 25, close to this dataset's day-30 timepoint —
+  and used CD99 to deplete them. The `phat_Epen1` association with failure
+  (ρ −0.614) is the quantitative link to outcome that their marker work implies.
+
+- **The case for dropping Sert from the numerator is now supported from
+  outside.** The BrainSTEM fetal-brain atlas [[13]](#references) reports that
+  forebrain and hindbrain cells make up more than half of most midbrain
+  datasets, that one protocol shows excessive caudalization with prominent
+  serotonergic signatures, and — directly — that off-target populations inflate
+  reported mDA yields across protocols. That is the same objection [§1](#1-what-is-being-predicted-and-why-not-the-published-metric)
+  raises against `(DA+Sert)/all`, reached independently and from a different
+  direction.
+
+- **Predicting differentiation outcome early is an established goal; the
+  predictor here is different.** Kim et al. [[14]](#references) showed miR-371-3
+  in pluripotent cells predicts neural differentiation propensity and in vivo
+  dopamine-neuron engraftment, and Jerber et al. predict from iPSC-stage bulk.
+  Both forecast from *before* differentiation. Forecasting from a snapshot taken
+  41 days *into* a differentiation, using annotated cell-type composition, is a
+  different measurement, and we found no prior instance of it.
+
+- **The `PC2` reading rests on standard developmental biology.** `NEUROD1` and
+  `DLL3` opposing `HES1` is the proneural/Notch relationship Shimojo et al.
+  [[15]](#references) characterised, where `HES1` maintains progenitors and its
+  loss releases them to differentiate.
+
+- **No prior art found for the day-30 composition-versus-expression result.**
+  That six cell-type proportions leave nothing for ten expression components to
+  add is, as far as we looked, unreported.
 
 The underlying floor-plate-based midbrain dopaminergic protocols
 [[6,7]](#references) are efficient but variable between lines and runs. The
@@ -323,13 +355,15 @@ counts an annotation, not transporter-positive mature neurons
   everything and expression adds nothing (permutation Δ 0.360 vs 0.018).
 - **How much did the donor matter? Not much, for prediction.** Donor-grouped and
   plain CV differ by ≤0.007 ROC-AUC, with classification scoring *higher* under
-  donor grouping. The same line differentiated twice agrees only weakly
-  (ρ +0.217, n = 21).
-- **How does it compare with the field?** The authors predicted from iPSC-stage
-  bulk RNA-seq, so none of this reproduces their result. The day-11 DA-only
-  predictor, the day-30 analysis, and the independence of the dopaminergic and
-  serotonergic fractions are not present in the analysis we read; the neuroblast
-  association recapitulates an observation they made indirectly.
+  donor grouping.
+- **How does it compare with the field?** The source paper predicted from
+  iPSC-stage bulk RNA-seq, so none of this reproduces their result. Two findings
+  are independently supported from outside this dataset: the ependymal
+  off-target fate as a failure mode [[12]](#references), and the objection to
+  counting serotonergic neurons toward dopaminergic yield [[13]](#references).
+  The day-11 neuroblast association is corroborated by a re-analysis of this
+  same data [[11]](#references), which is not independent replication. We found
+  no prior report of the day-30 composition-versus-expression result.
 
 ## References
 
@@ -374,6 +408,31 @@ counts an annotation, not transporter-positive mature neurons
     single-cell RNA-seq profiling across dopaminergic neuron differentiation.
     *Nature Genetics* 53:304–312 — source of the data, the D11/D30/D52 design,
     the cell-type labels and the 0.2 efficiency threshold.
+
+11. **Puigdevall P, Jerber J, Danecek P, Castellano S, Kilpinen H** (2023)
+    Somatic mutations alter the differentiation outcomes of iPSC-derived
+    neurons. *Cell Genomics*.
+    <https://www.cell.com/cell-genomics/fulltext/S2666-979X(23)00040-X> — a
+    re-analysis of **this same dataset**, so it is corroboration of the reading,
+    not independent replication.
+12. **Liang L, Tian Y, Feng L, et al.** (2022) Single-cell transcriptomics
+    reveals the cell fate transitions of human dopaminergic progenitors derived
+    from hESCs. *Stem Cell Research & Therapy* 13:412.
+    <https://doi.org/10.1186/s13287-022-03104-7> — choroid-plexus epithelial
+    cells as the main non-dopaminergic population, and CD99 for depleting them.
+13. **Toh HSY, Xu L, Chen C, Yang P, Sun AX, Ouyang JF** (2025) BrainSTEM: a
+    single-cell multiresolution fetal brain atlas reveals transcriptomic
+    fidelity of human midbrain cultures. *Science Advances* 11(44):eadu7944.
+    <https://doi.org/10.1126/sciadv.adu7944> — off-target forebrain and hindbrain
+    populations inflating reported midbrain dopaminergic yields.
+14. **Kim H, et al.** (2011) miR-371-3 expression predicts neural
+    differentiation propensity in human pluripotent stem cells. *Cell Stem
+    Cell*. <https://pubmed.ncbi.nlm.nih.gov/21624813/> — prediction of
+    dopamine-neuron potential from the pluripotent state.
+15. **Shimojo H, Ohtsuka T, Kageyama R** (2008) Oscillations in Notch signaling
+    regulate maintenance of neural progenitors. *Neuron*.
+    <https://www.cell.com/fulltext/S0896-6273(08)00166-9> — HES1, Dll and
+    proneural factors in progenitor maintenance versus differentiation.
 
 Data: [E-MTAB-10018](https://www.ebi.ac.uk/biostudies/arrayexpress/studies/E-MTAB-10018).
 The authors' analysis code:
