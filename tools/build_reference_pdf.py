@@ -34,13 +34,16 @@ CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 
 PARTS = [
     ("Part I", "Project overview", "README.md",
-     "Root README: the question, the data, the pipeline in brief, and headline results."),
+     "Root README: the question, the data, the pipeline in brief, and the results in summary."),
     ("Part II", "Findings and literature assessment", "FINDINGS.md",
      "What was found, and which findings recapitulate Jerber et al. (2021) versus add something new."),
-    ("Part III", "Modeling methods and full results", "modeling/README.md",
-     "The complete method record: CV design, metrics, feature importance, every correction "
-     "found by audit, and D30 readiness."),
-    ("Part IV", "EDA outputs and provenance", "metadata_eda/README.md",
+    ("Part III", "Modeling methods", "modeling/METHODS.md",
+     "How the prediction is done and why: features, models, hyperparameters, cross-validation, "
+     "metrics, and how feature importance is measured."),
+    ("Part IV", "Audit trail and infrastructure", "modeling/README.md",
+     "What audit review found and fixed, the decisions taken along the way, and how the "
+     "label-variant machinery works."),
+    ("Part V", "EDA outputs and provenance", "metadata_eda/README.md",
      "What each EDA script produced, why, and the caveats found along the way."),
 ]
 
@@ -157,19 +160,18 @@ def build() -> str:
     rendered = markdown.markdown("\n".join(body), extensions=MD_EXTENSIONS)
     title = f"""<div class="titlepage">
   <p class="kicker">Reference snapshot &middot; complete documentation</p>
-  <h1>Predicting D52 dopaminergic<br>differentiation efficiency from D11</h1>
-  <p class="sub">The full written record of the D11 &rarr; D52 prototype: overview, findings,
-  modeling methods and EDA provenance, in one document.</p>
+  <h1>Predicting D52 dopaminergic differentiation<br>efficiency from D11 and D30</h1>
+  <p class="sub">The full written record: overview, findings, modeling methods,
+  audit trail and EDA provenance, in one document.</p>
   <table>
     <tr><td>Repository</td><td>pluricon-prototype</td></tr>
     <tr><td>Commit</td><td><code>{full}</code></td></tr>
     <tr><td>Generated</td><td>{date.today().isoformat()}</td></tr>
     <tr><td>Contents</td><td>{' &middot; '.join(p[2] for p in PARTS)}</td></tr>
-    <tr><td>Dataset</td><td>Jerber et al. 2021, <i>Nat Genet</i> 53:304&ndash;312 &mdash; 138 iPSC lines</td></tr>
+    <tr><td>Dataset</td><td>Jerber et al. 2021, <i>Nat Genet</i> 53:304&ndash;312 &mdash; 136 iPSC lines, 20 donors</td></tr>
   </table>
-  <p class="note">Captured at commit <code>{rev}</code>, before the repository is extended to the
-  D30 &rarr; D52 model. Every section of all four source documents is reproduced verbatim;
-  nothing is summarised or omitted.</p>
+  <p class="note">Captured at commit <code>{rev}</code>. Every section of all five source
+  documents is reproduced verbatim; nothing is summarised or omitted.</p>
 </div>"""
 
     OUT_DIR.mkdir(exist_ok=True)

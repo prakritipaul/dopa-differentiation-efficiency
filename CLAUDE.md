@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Predicting D52 dopaminergic differentiation efficiency from D11 single-cell
 features across 136 iPSC lines (Jerber et al. 2021). Headline outcome is
 DA/all D52 cells; the earlier DA+Sert analysis is retained as an appendix. See `README.md` for the
-overview, `FINDINGS.md` for results, `modeling/README.md` for methods.
+overview, `FINDINGS.md` for results, `modeling/METHODS.md` for methods.
 
 Pipeline lives in `modeling/`; numbered `0NN_*.py` scripts in `eda/` are the
 EDA phase that produced `metadata_eda/`. Data paths resolve from
@@ -102,7 +102,7 @@ the skill where its defaults fight this repo.
 2. **Methods rationale is the deliverable, not prose debt.** "At most three
    short lines / delete the explanation" applies to defending a *code*
    simplification. Why a statistical choice was made belongs in `FINDINGS.md`
-   and `modeling/README.md` at whatever length it takes.
+   and `modeling/METHODS.md` at whatever length it takes.
 3. **Never delete provenance to shorten a diff.** `archive/`, suffixed variant
    outputs (`_qualonly`), saved fold assignments and seeds are not speculative
    flexibility. Mutating an analysis script in place is the shortest diff and
@@ -129,8 +129,8 @@ after writing it.
 Why on by default: the defects this repo produces are silent. They do not raise
 — they emit a plausible, non-crashing, wrong number into a results table. A
 second independent Codex review already caught a case where a previous
-`modeling/README.md` entry overstated what had been fixed
-(`modeling/README.md:474`). An audit protocol you have to remember to invoke is
+`modeling/README.md` entry overstated what had been fixed (see its
+"Second correctness review" section). An audit protocol you have to remember to invoke is
 one you will skip on exactly the change that needed it.
 
 The skill itself lives globally at

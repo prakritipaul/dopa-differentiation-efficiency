@@ -190,6 +190,18 @@ removed together.
 pool identity. It is high for several PCs — read
 `docs/PCA_interpretation.md` before interpreting any PC biologically.
 
+### `pc1_loadings_{D11,D30}_da_untreated.csv`
+
+From `pc1_loadings_analysis.py`. The top 25 HVG loadings at each pole of PC1,
+with `gene`, `loading`, `signed_rank` (1..2000) and `pole`.
+
+Only PC1 gets this treatment: PC2/PC3 are near-tied in variance and rotate
+between fits, so a gene-level reading of them would not replicate. PC1 does
+(r = 0.9995). **The sign is arbitrary** — `pole` labels one end against the
+other, and carries no meaning on its own. Interpretation in
+`docs/PCA_interpretation.md`; the script also prints the gene-set enrichments
+and the composition-vs-state decomposition, which are not saved to CSV.
+
 ---
 
 ## Provenance and staleness

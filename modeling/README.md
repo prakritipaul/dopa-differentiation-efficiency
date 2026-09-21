@@ -1,12 +1,19 @@
-# D11 -> D52 modeling: CV/modeling plan
+# `modeling/` — provenance and infrastructure
 
-> **Project-level findings summary with literature context: [`FINDINGS.md`](../FINDINGS.md)**
+**Methods live in [`METHODS.md`](METHODS.md)** — features, models,
+hyperparameters, cross-validation, metrics and feature importance. Results live
+in [`../FINDINGS.md`](../FINDINGS.md); output files in
+[`results/README.md`](results/README.md).
 
+This file is the record of how the pipeline got to its current state: what audit
+review found and fixed, which decisions were taken and why, and how the
+label-variant machinery works.
 
-Predicting D52 differentiation efficiency from D11 features (138 cell
-lines, from `metadata_eda/cohort/qualifying_cell_line_pool_min10_per_timepoint.csv`
-and `metadata_eda/cohort/d52_diff_efficiency_label.csv`). Designed to generalize
-to a D30 -> D52 baseline model later (see Architecture).
+> **No performance numbers here.** Every results table this file used to carry
+> was from phase 1 — 138 lines, the `(DA+Sert)/all` outcome, D11 only — and is
+> superseded by the 136-line `DA/all` untreated analysis. The current grids are
+> in [`../FINDINGS.md`](../FINDINGS.md) Appendix A, the phase-1 bridge in its
+> Appendix C, and the originals in git history at `9a23404`.
 
 ## Layout
 
@@ -30,379 +37,7 @@ modeling/
 
 Writers create their own subdirectory, so a fresh clone or a redirected
 `out_dir` works without manual `mkdir`.
-
-## First-pass prototype scope (decided while implementing)
-
-Timed a single fold's PCA fit empirically: `compute_gene_stats` 11.2s +
-`extract_hvg_matrix` 7.6s + `run_pca` 29.1s (k=10) / 23.5s (k=5) = 48-60s
-per fold. The two streaming passes don't depend on `k` at all, and the
-PCA step itself only saves ~12% going from k=10 to k=5 (randomized SVD
-cost scales mostly with matrix size -- 250K cells x 2000 HVGs -- not much
-with target rank in this range). This changed two decisions:
-
-- **`n_pcs` stays at 10, not reduced to 5** -- reducing it barely helps
-  runtime (~12% off the PCA step only) so isn't worth losing PCs 6-10 for
-  a first pass.
-- **Repeats = 5, not 10 or 3** -- 3 is too thin to see a real distribution
-  of results (the stated goal); 10 is the better final number eventually,
-  but for a first-pass prototype the marginal precision isn't worth the
-  extra ~50 min, especially once we noticed LOCO/LODO (below) is the
-  actual dominant cost, not repeats.
-- **This first pass runs `plain` + `donor_grouped` only; LOCO and LODO are
-  deferred**, not dropped. Total folds = `2 x 5 x n_repeats` (plain +
-  donor_grouped) `+ 138` (loco) `+ 20` (lodo) -- LOCO alone (138 folds) is
-  larger than even the full 10-repeat plain+donor_grouped schemes
-  combined (100 folds), so it dominates total cost far more than the
-  repeats count does. Validating the harness end-to-end on the cheaper
-  schemes first, before paying for LOCO/LODO's ~2.4 hr, is the more
-  sensible order for troubleshooting.
-- Estimated cost for this first pass: 50 folds (`5 x 5` plain + `5 x 5`
-  donor_grouped), k=10, ~48-50s/fold once the process is warm ≈ **~40-45
-  min**, run as a single background job (avoids paying Python/import
-  startup cost per fold).
-
-## Full results (258 folds: plain 50, donor_grouped 50, LOCO 138, LODO 20)
-
-Headline (donor_grouped, nested CV, **no pool-correction** -- see
-"Pool-correction dropped" below):
-
-The pre-registration named a specific model per task (**ridge** /
-**logistic_l2**), so those are the headline numbers. The L1 variants
-scored better, but quoting them as "the" headline would be exactly the
-cherry-picking the pre-registration exists to prevent -- they are
-reported below as secondary.
-
-| task | model | key metrics |
-|---|---|---|
-| regression (**headline**) | ridge | MAE=0.138, RMSE=0.175, **R2=0.653 +/- 0.021** |
-| regression (secondary) | lasso | MAE=0.135, RMSE=0.172, R2=0.668 +/- 0.015 |
-| classification (**headline**) | logistic_l2 | **ROC-AUC=0.947 +/- 0.007**, PR-AUC=0.968, balanced_acc=0.913 |
-| classification (secondary) | logistic_l1 | ROC-AUC=0.951 +/- 0.008, PR-AUC=0.970, balanced_acc=0.912 |
-
-Full metric set for every model and scheme is in "Latest results" at the
-bottom; what each metric means and why it is in the set is under "Metrics".
-
-D11 features are clearly predictive of D52 differentiation efficiency,
-even under the strict donor-grouped (never-seen-donor) test. Going from
-the 5-repeat first pass to the full 10-repeat + LOCO/LODO run barely
-moved these numbers (secondary lasso R2 0.667->0.668, secondary L1 AUC
-0.949->0.951) -- the estimates were already stable.
-
-**All four schemes, nested CV:**
-
-| scheme | regression R2 (lasso / ridge) | classification ROC-AUC (L1 / L2) |
-|---|---|---|
-| LOCO (leave-one-line-out) | 0.691 / 0.683 | 0.931 / 0.939 |
-| plain 5-fold | 0.680 / 0.677 | 0.947 / 0.945 |
-| LODO (leave-one-donor-out) | 0.679 / 0.665 | 0.953 / 0.958 |
-| donor_grouped 5-fold | 0.668 / 0.653 | 0.951 / 0.943 |
-
-**Donor-leakage effect is real but small (~0.012 R2), and consistent
-across two independent comparisons**: plain vs. donor_grouped
-(0.680->0.668) and LOCO vs. LODO (0.691->0.679) give the same gap. The
-scheme ordering is mechanistically sensible -- LOCO is most optimistic
-(137/138 lines in training AND siblings allowed), donor_grouped strictest
-(siblings excluded AND ~28 lines held out), LODO in between (prevents
-donor leakage but still trains on ~131-137 lines). **Classification is
-essentially flat across all four schemes** (0.93-0.96) -- no meaningful
-donor-leakage penalty at all.
-
-Caveat on LOCO: its metrics pool all 138 single-line fold predictions (a
-one-line fold can't support per-fold metrics), so it has no variance
-estimate and isn't perfectly comparable to the repeat-averaged schemes.
-
-**Caveat on the regression R2 (checked, see `docs/pool_correction_investigation.md`
-"Follow-up"): mostly reflects correctly separating success from failure,
-not fine-grained precision.** The outcome is bimodal (42 failures at
-0-0.185, 96 successes at 0.221-~0.92, real gap at the threshold).
-Splitting predictions by true clump: within-success R2 is modest but real
-(~0.17-0.22); within-failure R2 is strongly negative (~-14, i.e. far worse
-than a trivial baseline -- absolute error ~0.135 is nearly the whole
-failure clump's true range). Trust this model for success/failure
-classification; don't trust the regression output as a precise efficiency
-estimate, especially for predicted failures.
-
-Visual confirmation in `plots/plot_regression_diagnostics.png` /
-`plots/plot_classification_diagnostics.png` (predicted-vs-true and residual
-scatter for regression; ROC curve, confusion matrix, and predicted-
-probability histogram for classification, all donor_grouped/nested/
-repeat 0). Two things visible there that the numbers alone didn't show:
-- Classification's predicted probabilities are almost perfectly bimodal
-  (failures near 0, successes near 1, almost nothing in between) --
-  directly mirrors the gap in the true label and is *why* AUC~0.94 is
-  achievable even though the regression signal is much weaker.
-- Within the success clump, regression residuals show a **systematic
-  bias, not just noise**: over-predicts around true~0.3-0.4, under-
-  predicts around true~0.8-0.9 -- the model compresses predictions
-  toward the middle of the success range (shrinkage/regression-to-the-
-  mean) rather than tracking the full spread.
-
-## Which features matter (feature importance)
-
-`feature_importance.py` -> `results/feature_importance_table_{task}_{model}.csv`.
-Design and caveats in `docs/feature_importance_plan.md`. The single
-configuration these tables are fitted at comes from the **flat** grid, not
-nested -- see "Flat vs nested: which is used for what" for why. Results below are on
-the full 258-fold data; they were essentially unchanged from the 5-repeat
-first pass (selection frequencies firmed up slightly, LOCO deltas moved
-by <0.005), so they look stable.
-
-> **These tables are the BASELINE basis only.** For the current numbers on
-> both bases, including the qualifying-only variant, see
-> **"Latest results"** at the bottom of this file -- that section is
-> authoritative. The narrative and interpretation here still hold; only
-> read the specific figures from the bottom table.
-
-### What the columns mean
-
-`phat` is **p-hat**, statistics notation for an estimated proportion.
-`phat_NB` = fraction of that line's D11 cells labelled neuroblast, computed
-per `(cell_line, pool)` as `n_of_that_type / n_total`, then averaged
-pool-then-line. The three sum to exactly 1, which is why only two enter a fit
-and `phat_P_FPP` reads `reference`.
-
-| column | how it is computed | how to read it | example (`logistic_l1`, k=2) |
-|---|---|---|---|
-| **Univariate rho** | Spearman rank correlation of feature vs outcome over the 138 lines. No model, no folds, no other features. | -1..+1. Sign = direction, magnitude = monotonic association. Marginal, so blind to confounding. | `phat_NB` -0.733: more neuroblasts -> lower efficiency |
-| **Coef** | Standardized coefficient from ONE fit on all 138 lines at the winning config; features scaled to mean 0 / SD 1 first. | Change in outcome per **1 SD** of the feature; log-odds for classification. Standardization is what makes proportions (SD ~0.05) and PCs (SD ~1-9) comparable. | `phat_NB` -1.535: +1 SD of NB lowers log-odds of success by 1.53 |
-| **Sel. freq** | Fraction of CV folds where the coefficient came back non-zero. | 0..1 stability -- does it survive refitting on other subsets? **Only meaningful for L1**; ridge/L2 never zero anything, so their column is uniformly 1.00. | `phat_NB` 0.90 kept; `phat_FPP` 0.00 always dropped |
-| **LOCO delta** | **Refit** without that feature, same folds and config; paired per fold, `score_with - score_without`, then averaged. | Positive = removing it hurt = it helps. In headline-metric units. Because the model is refit, a real but **redundant** feature scores ~0. | `phat_NB` +0.051 AUC |
-| **Perm delta** | Take the **already-fitted** model, shuffle that column in the test matrix, re-score. Paired per fold. Proportions shuffled as a block. | Positive = this model relies on it. No refit, so it measures dependence, not irreplaceability. | `phat_FPP` 0.277 -- yet its LOCO is 0.0 |
-| **SHAP** | `mean abs(coef_j * z_ij)` over the 138 lines, `z` = standardized value. | Average magnitude of the feature's push on one prediction. | `phat_NB` 1.190 vs `PC2` 0.514 |
-| **Technical covariate** | eta^2 of the feature on pool identity: `(SS_total - SS_within)/SS_total`. | 0..1 = fraction of the feature's variance explained by **which pool** a line came from. Says nothing about the outcome -- it flags the feature. >=0.5 High, >=0.15 Moderate, else Low. Compare against the chance floor below, not against 0. | `phat_NB` 0.04 clean; `PC2` 0.76 mostly batch |
-
-**eta^2 has a chance floor -- read it against that, not against 0.** Fitting
-10 pools (9 dummies) to 159 rows explains some variance even for a feature
-with no pool structure at all. Permuting a random feature 2,000 times over
-the real pool labels gives:
-
-```
-null eta^2:  mean 0.057, 95th percentile 0.105
-             (chance level ~ (n_pools-1)/(n-1) = 0.057)
-```
-
-So the "Low" band (<0.15) is only about 2x chance. Against that null, every
-PC and both of `phat_FPP` / `phat_P_FPP` sit far above chance (p < 0.0005),
-while **`phat_NB` at 0.037 is at or below what a random feature scores** --
-a stronger statement than "Low": there is no detectable pool structure in it
-at all.
-
-`sqrt(eta^2)` is the correlation ratio, comparable in scale to `abs(r)`:
-PC2's 0.764 -> 0.87, `phat_NB`'s 0.037 -> 0.19.
-
-Two honest caveats:
-
-- **SHAP is not a fifth independent measure here.** For a linear model on
-  standardized features `mean abs(z) ~ 0.8`, so SHAP ~ 0.8 x abs(coef)
-  (observed 0.78 and 0.79). It is a consistency check that respects the
-  feature's actual distribution, not corroborating evidence.
-- **Coefficient signs are multivariate and can flip.** In the regression
-  table `phat_NB` has rho = -0.73 but coefficient **+0.067** -- a suppression
-  effect, with PC2/PC3 absorbing the shared signal. Never read a coefficient
-  sign in isolation.
-
-**Why five measures rather than one:** they disagree, and the disagreement is
-the finding. LOCO ~0 with a large permutation delta means real but redundant
-information; both large means irreplaceable. `phat_NB` is the standout
-precisely because every measure agrees *and* it is the only technically clean
-feature in either table.
-
-### What the "one-SE rule" is
-
-A standard way to pick a hyperparameter config that avoids chasing noise.
-Instead of taking the raw best-scoring config (the argmax across all 55
-`(k, regularization)` combos), you:
-
-1. Find the best mean cross-validated score.
-2. Take every config whose score is within **one standard error** of that
-   best score -- i.e. everything statistically indistinguishable from the
-   winner given how noisy the estimate is.
-3. Among those, pick the **simplest** one.
-
-Rationale: with n=138 and 55 candidates, the literal argmax is often a
-noise peak -- some config got lucky on these particular folds. Anything
-within 1 SE of it is, on the evidence, just as good, so preferring the
-simplest of them gives a more robust and more interpretable model at no
-real cost in performance. "Simplest" here is defined in advance (not
-after seeing results) as: fewest PCs first, then strongest regularization
-(larger `alpha` for ridge/lasso; smaller `C` for logistic, since `C` is
-inverse regularization strength).
-
-**The one-SE rule is applied ONLY in flat CV, never inside nested CV.**
-`select_winning_config_one_se` lives in `feature_importance.py` and is called
-only from there, on the flat grid. Nested CV's inner loop
-(`harness.run_nested_cv`) takes the **raw argmax** of the mean inner score:
-
-```python
-mean_inner = float(np.mean(inner_scores))
-if mean_inner > best_score:                 # plain argmax, no tolerance band
-    best_score, best_combo = mean_inner, (k, param_combo)
-```
-
-This is not a correctness problem -- nested CV stays unbiased either way,
-because the selection happens inside the outer fold and never sees the
-outer-test lines. But it is worth knowing for two reasons:
-
-1. **The inner loop is the noisier of the two selections**, not the cleaner
-   one. It ranks the same 55 candidates using only 3 inner folds of ~36
-   validation lines each, versus flat's 10 repeats over all 138. If argmax on
-   55 candidates is a noise peak anywhere, it is there.
-2. **It partly explains the hyperparameter instability documented below** --
-   the modal nested config winning only ~9-10 of 50 outer folds is exactly
-   what raw argmax over 55 near-tied candidates on small inner folds
-   produces. A one-SE (or any tolerance) rule in the inner loop would
-   concentrate those selections considerably.
-
-Applying it there would change reported performance, so it has not been done
-on a whim; it is a live option rather than an oversight.
-
-Implementation note: the tolerance band is SD_across_repeats /
-sqrt(n_repeats), with n_repeats read from the fold-assignment data. (An
-earlier version used the raw SD, which is ~3x too wide at 10 repeats --
-see "Corrections from the audit". Fixed; selections happened not to
-change.) Effect here: classification
-went from the raw argmax's k=4 to k=2 -- a materially simpler model for
-statistically indistinguishable performance.
-
-**Regression (lasso, one-SE-selected k=5):**
-
-| Feature | Univariate ρ | Coef | Sel. freq | LOCO Δ | Perm Δ | SHAP | Technical covariate |
-|---|---|---|---|---|---|---|---|
-| phat_FPP | 0.19 | -0.045 | 0.88 | -0.0015 | 0.035 (grp) | 0.033 | High (η²=0.76) |
-| **phat_NB** | **-0.73** | +0.067 | 1.00 | +0.0017 | 0.035 (grp) | 0.052 | **Low (η²=0.04)** |
-| phat_P_FPP | 0.34 | reference | -- | -0.0007 (grp) | 0.035 (grp) | -- | High (0.65) |
-| PC1 | 0.56 | 0.004 | 0.80 | -0.0024 | 0.005 | 0.003 | Moderate (0.49) |
-| **PC2** | 0.67 | **+0.312** | 1.00 | **+0.0186** | **0.176** | 0.247 | **High (η²=0.76)** |
-| PC3 | -0.22 | -0.251 | 1.00 | +0.0141 | 0.146 | 0.189 | Moderate (0.50) |
-| PC4 | 0.53 | 0.044 | 1.00 | -0.0009 | 0.015 | 0.035 | Moderate (0.45) |
-| PC5 | -0.02 | -0.052 | 1.00 | +0.0016 | 0.009 | 0.040 | High (0.79) |
-
-**Classification (logistic_l1, one-SE-selected k=2** -- notably simpler
-than the raw argmax's k=4, the one-SE rule working as intended):
-
-| Feature | Univariate ρ | Coef | Sel. freq | LOCO Δ | Perm Δ | SHAP | Technical covariate |
-|---|---|---|---|---|---|---|---|
-| phat_FPP | 0.20 | 0.0 (regularized out) | 0.00 | 0.0 | 0.277 (grp) | 0.0 | High (0.76) |
-| **phat_NB** | **-0.73** | **-1.535** | 0.90 | **+0.051** | **0.277 (grp)** | **1.190** | **Low (η²=0.04)** |
-| phat_P_FPP | 0.41 | reference | -- | **+0.064** (grp) | 0.277 (grp) | -- | High (0.65) |
-| PC1 | 0.58 | 0.0 (regularized out) | 0.10 | 0.0 | 0.000 | 0.0 | Moderate (0.49) |
-| PC2 | 0.59 | +0.648 | 0.82 | +0.004 | 0.080 | 0.514 | High (0.76) |
-
-("grp" = grouped: permutation always shuffles the 3 proportions as one
-block, since permuting one alone implies an impossible third coordinate.)
-
-**LOCO vs. permutation disagree for the regression proportions, and the
-disagreement is the finding**: permutation Δ=0.035 (the fitted model does
-rely on them) but LOCO Δ≈0 (refitting without them costs nothing). That's
-the correlated-feature signature -- the proportions carry real signal,
-but it's redundantly available in the PCs, so a refit compensates. For
-classification both measures agree they're essential (perm 0.277, LOCO
-0.064, both largest in the table), meaning there the proportions carry
-something the PCs don't replicate. Running only one of the two measures
-would have told a misleading story either way.
-
-Three findings:
-1. **`phat_NB` is the standout trustworthy feature** -- strongest
-   univariate signal of anything (ρ=-0.73), near-always selected, largest
-   individual LOCO contribution for classification, and by far the
-   cleanest technically (η²=0.04, the only "Low" feature in either
-   table). The one result to lean on biologically.
-2. **PC2 is the strongest PC for regression but is heavily
-   pool-confounded** (η²=0.76) -- largest coefficient, permutation and
-   LOCO delta for regression, but its predictive power may be
-   substantially technical rather than biological. Treat PC2-based claims
-   cautiously. (Note: an earlier version of this README claimed PC2 also
-   dominated SHAP; that was a units bug -- see "Corrections from the
-   audit" below. Corrected, `phat_NB` has the larger SHAP value for
-   classification, 1.19 vs PC2's 0.51.)
-3. **Proportions matter greatly for classification, almost not at all
-   for regression** -- dropping both costs +0.064 AUC (largest single
-   effect in either table) but costs regression ~nothing (-0.0007).
-
-Caveat: `phat_NB`'s univariate correlation is negative (-0.73) but its
-*regression* coefficient is positive (+0.067) -- a suppression effect
-from multivariate adjustment (PC2/PC3 absorb the shared signal). Don't
-read that sign in isolation; the univariate direction and the
-classification coefficient (-1.53) agree that more NB at D11 -> worse D52
-outcome.
-
-### Why the tables stop at PC5 (regression) / PC2 (classification)
-
-`k` is a tuned hyperparameter, so the tables only list features actually
-*in* the selected model. The flat-CV grid tested k=0..10 exhaustively;
-larger k didn't score better, so the one-SE rule took the simpler model.
-
-**Known design limitation** (raised by Codex): we only ever test PC
-*prefixes* (PC1..k), never arbitrary subsets. PCs are ordered by variance
-in the *predictors*, not by outcome relevance -- so a predictive PC8 sitting
-behind noisy PC6/PC7 could be missed, since reaching it requires accepting
-k=8 and dragging the noise in with it.
-
-Checked this directly -- univariate association (no model involved) for
-every PC, including the excluded ones:
-
-| PC | ρ (regression) | ρ (classification) | pool η² | In model? |
-|---|---|---|---|---|
-| PC1 | 0.563 | 0.584 | 0.490 | both |
-| PC2 | **0.670** | **0.593** | 0.764 | both |
-| PC3 | -0.221 | -0.370 | 0.498 | regression only |
-| PC4 | 0.525 | 0.477 | 0.448 | regression only |
-| PC5 | -0.018 | -0.015 | 0.788 | regression only |
-| PC6 | -0.101 | -0.089 | **0.909** | no |
-| PC7 | 0.275 | 0.364 | 0.531 | no |
-| PC8 | 0.260 | 0.197 | **0.963** | no |
-| PC9 | 0.061 | -0.147 | **0.946** | no |
-| PC10 | -0.203 | -0.157 | 0.461 | no |
-
-**Conclusion: little is being missed.** No excluded PC approaches the
-included ones' univariate strength (best excluded is PC7 at ρ≈0.28-0.36
-vs. PC2's 0.67). More tellingly, **PC6/PC8/PC9 are nearly pure batch
-signal** (η² = 0.91 / 0.96 / 0.95 -- PC8's means 96% of its variance is
-explained by which pool a line came from). Excluding them is a feature,
-not a loss.
-
-One nuance: **PC5 is included despite ~zero univariate correlation**
-(-0.018). Since the one-SE rule takes the simplest config within
-tolerance and still chose k=5 over k=4, PC5 must contribute
-multivariately despite being marginally useless -- classic suppressor
-behavior (correlating with noise in the other PCs so the model can cancel
-it out). Its own LOCO (+0.0016) and permutation (0.0085) deltas are
-small, consistent with a minor supporting role rather than a driver.
-
-## Fitting population: the qualifying-only PCA variant
-
-The D11 HVG/PCA basis was originally fit on every cell except the fold's
-held-out lines and pool11. That INCLUDES ~25,400 cells from 39 cell lines
-that are not among the 138 and never appear in any train or test set, plus
-~1,100 cells from non-qualifying pools of qualifying lines. Not leakage
-(the held-out mask applies by `cell_line`, so every cell of a held-out
-line is dropped regardless of pool), but not the study population either.
-
-Both variants are now built and kept side by side:
-
-| | fit cells (one fold) | outputs |
-|---|---|---|
-| baseline | 243,066 | `*_full.csv`, unsuffixed tables |
-| qualifying-only | 217,211 | `*_qualonly.csv` |
-
-Fold assignments are byte-identical between the two runs (verified: 35,604
-rows each), so the comparison is like-for-like and any difference is
-attributable to the fitting population alone.
-
-**Result — pre-registered headline (donor_grouped, nested):**
-
-| | baseline | qualifying-only |
-|---|---|---|
-| regression, ridge, R2 | 0.6531 +/- 0.0211 | **0.6672 +/- 0.0124** |
-| classification, logistic_l2, ROC-AUC | 0.9470 +/- 0.0070 | 0.9483 +/- 0.0157 |
-
-Regression improves modestly (+0.014 R2, ~0.67 SD) and — more notably —
-its across-repeat SD nearly halves. Classification is a wash: AUC up a
-hair, balanced accuracy down a hair, SD doubled. So the extra 25,400
-foreign cells were adding noise to the regression basis rather than
-helping it.
-
-### Do NOT compare the two importance tables row by row
+## Do NOT compare the two importance tables row by row
 
 The components REORDER between bases, so "PC2" does not mean the same
 thing in each. Correlating per-line coordinates across the 138 lines:
@@ -427,7 +62,6 @@ Explained variance is near-identical across bases
 PC3 are near-tied, which is exactly the regime where ordering is unstable.
 **Align components by correlation before interpreting anything
 biologically.**
-
 ## Corrections from the audit
 
 After the analysis was complete, an independent Codex correctness audit
@@ -458,17 +92,20 @@ quietly patched, since two of them changed reported numbers.
    compounded it.** The pre-registration named ridge / logistic_l2, but
    the function returned all models and the better-scoring non-registered
    models (lasso R2=0.668, logistic_l1 AUC=0.951) were being quoted as
-   "the" headline -- the exact cherry-picking the pre-registration exists
-   to prevent. Fixed to filter on the pre-registered model; headline
-   numbers are now ridge R2=0.653 and logistic_l2 AUC=0.943, with the L1
-   variants reported as secondary.
+   *the* result -- the exact cherry-picking the pre-registration exists
+   to prevent. Fixed to filter on the pre-registered model; the reported
+   numbers became ridge R2=0.653 and logistic_l2 AUC=0.943, with the L1
+   variants labelled secondary. **The lesson outlives the
+   pre-registration**: whatever declares the model -- a pre-registration
+   then, the one-SE rule now -- the reporting function must filter on it,
+   or the best-scoring row wins by default and the declaration is
+   decorative.
 
 Feature-importance tables are now produced for **all four** models
 (`results/feature_importance_table_{task}_{model}.csv`) rather than just the L1
 pair, for the same reason. The L1 tables remain the more informative ones
 (only L1 produces sparsity, so `regularized_to_zero` /
 `selection_frequency` are meaningful), but both are reported.
-
 ## Second correctness review (variant plumbing + test pollution)
 
 A second independent Codex review, run specifically on the qualifying-only
@@ -519,8 +156,12 @@ plausible, non-crashing, wrong output.
 A guard now prevents defect 1 from recurring silently: with `--suffix`
 set and no explicit basis, the matching suffixed basis is REQUIRED, and
 its absence is a hard error naming the command that generates it.
-
 ## D30 readiness — NOT ready (read before starting D30 -> D52)
+
+> **Closed.** D30 → D52 is complete; every blocker below was addressed, and
+> the audit gates are recorded in [`docs/audit_ledger.md`](docs/audit_ledger.md).
+> Kept because it records what the risks looked like before the work, not
+> because any of it is still outstanding.
 
 The earlier claim in "Architecture" that feature extraction is simply
 "timepoint-parameterized" is too optimistic. What is genuinely reusable:
@@ -566,52 +207,6 @@ combos has identical D11 and D30 counts (D11 range 25-14,640; D30 range
 13-13,112; correlation 0.748). Sampling precision therefore differs
 substantially, which is a further reason D11 proportions must never be
 reused as D30 features.
-
-## What PC1 is: a D11 proliferation axis
-
-> Full write-up, loadings tables and literature sources:
-> **`modeling/docs/PCA_interpretation.md`**. Summary below.
-
-`005_d11_pca_features.py` now also writes
-`metadata_eda/pca/d11_pca_gene_loadings{suffix}.csv` -- all 10 PCs x 2000 HVGs,
-long format, sorted by |loading| within each PC.
-
-PC1 (5.4% of HVG variance, Spearman rho = **+0.563** vs D52 efficiency, so
-higher PC1 = higher efficiency) is a **cell-cycle / proliferation axis**:
-
-| positive loadings (high in high-efficiency lines) | negative loadings |
-|---|---|
-| HMGB2, PTTG1, NUSAP1, UBE2C, CENPF, CKS2, TOP2A, PLK1, CCNB1/CCNB2, KPNA2, CDC20, BIRC5, CKS1B, AURKA/AURKB, CCNA2, TPX2, CDK1, KIF2C, SMC4, CDKN3, MKI67 | RPL12, RPL10, RPS3, RPS12, RPS28, RPL37A (ribosomal proteins); EIF3E, EIF3L, EIF4A2 (translation initiation); GAPDH, COX7C, UQCRB, TOMM7, ETFB (housekeeping/OXPHOS); SNHG8, MIAT, EPB41L4A-AS1, APOE, CCND2, SLC2A1 |
-
-The positive side is a textbook G2/M signature. So lines whose D11
-cultures are **more proliferative differentiate better by D52**. This is
-consistent with the line-level correlations: PC1 tracks `phat_P_FPP`
-(proliferating FPP) at rho = **+0.798** and is negatively correlated with
-`phat_NB` (rho = -0.552), the neuroblast fraction that independently
-predicts *worse* outcome.
-
-Top 25 genes carry 29.6% of PC1's total weight (loadings are unit-norm);
-median |loading| is 0.0012, so PC1 is dominated by a compact, coherent
-gene set rather than being diffuse.
-
-**Replicates across bases**: PC1 loadings correlate r = **+0.9995**
-between the baseline and qualifying-only bases, with 25/25 top-gene
-overlap. Unlike PC2/PC3, PC1 is stable and safe to compare across the two.
-
-Caveats:
-- **Loading sign is arbitrary in general.** It is interpretable here only
-  because PC1 was oriented against the outcome (rho > 0). Do not carry the
-  sign convention to other PCs without re-checking.
-- Loadings are weights on **standardized** expression (per 1 SD of that
-  gene, after the +/-`SCALE_CLIP` clip), so they are comparable across
-  genes of different absolute expression -- but they are not fold-changes.
-- **PC1 is moderately pool-associated (eta2 = 0.49).** A
-  proliferation-vs-ribosomal/housekeeping contrast is also the classic
-  shape of a library-size / cell-quality technical axis, so some of this
-  variance is likely technical. The biological reading is plausible and
-  matches the `phat_P_FPP` correlation, but PC1 is not as technically
-  clean as `phat_NB` (eta2 = 0.04).
-
 ## Pool-correction dropped
 
 Investigated (with an independent Codex review) why pool-correction cut
@@ -623,525 +218,50 @@ implementation issues found along the way). Decision: drop pool-correction
 from the active pipeline rather than resolve this now -- it added
 significant complexity for an unclear net benefit at this prototype
 stage. `features.py`/`harness.py` still support it if revisited.
-
-## Setup
-- 138 lines, one row each. Regression (`diff_efficiency`) + classification (`>=0.2`), same features/folds for both.
-- Features: 3 D11 proportions (always in) + up to 10 PCs, `k=0..10` tuned by truncating one PCA fit (no refit per k).
-- Models, full parallel arms: Ridge + Lasso (regression); L2 + L1 logistic (classification).
-
-### Hyperparameters: 55 configurations per model
-
-Two are tuned, jointly: `k` (11 values) x regularisation strength (5 values).
-
-| hyperparameter | values | n |
-|---|---|---|
-| `k` -- number of PCs | 0, 1, 2, ... 10 | **11** |
-| regularisation strength | see per-model grid below | **5** |
-
-`k=0` means proportions only. The 2 modelled proportions are always in; `k`
-controls how many PCs join them. PCs are hierarchical, so `k` truncates
-columns from one PCA fit -- no refit per `k`.
-
-| model | task | parameter | values |
-|---|---|---|---|
-| ridge | regression | `alpha` | 0.01, 0.1, 1, 10, 100 |
-| lasso | regression | `alpha` | 0.001, 0.01, 0.1, 1, 10 |
-| logistic_l2 | classification | `C` | 0.01, 0.1, 1, 10, 100 |
-| logistic_l1 | classification | `C` | 0.01, 0.1, 1, 10, 100 |
-
-**`C` is sklearn's inverse regularisation strength** -- the logistic
-equivalent of `alpha`, running the opposite direction (`C` ~ 1/`alpha`):
-
-- `alpha` **up** -> more regularisation -> coefficients shrink
-- `C` **up** -> *less* regularisation -> coefficients grow freely
-
-That inversion is why "simplest" in the one-SE rule means *larger alpha,
-smaller C*: both mean more heavily regularised.
-
-Lasso's `alpha` grid sits one decade lower (0.001-10) because L1 shrinks
-coefficients to exactly zero, so it needs smaller values before it stops
-zeroing out everything.
-
-## CV — both variants run, neither "primary"
-- **Plain split**: ordinary split over the 138 rows (grouping by cell_line is a no-op here — each row is already one whole line).
-- **Donor-grouped split**: lines sharing a donor forced into the same fold (136/138 lines have a donor-sibling; one donor has 18 lines). See "What donor_grouped actually does" below.
-- **LOCO + LODO**: full leave-one-line-out and leave-one-donor-out runs, as comparability checks vs. the paper's (non-donor-grouped) LOOCV.
-- **Flat CV + nested CV**: both run (flat = grid search, report best mean CV score; nested = outer loop for honest estimate, inner loop tunes `k`/regularization). Inner tuning metric: PR-AUC (classification), MAE (regression). They are used for **different jobs** -- see below.
-- **Repeated K-fold**: report mean ± SD **per repeat** — never pool predictions across repeats (double-counts each line); pooling *within* one repeat is fine.
-- **Weighting**: equal weight per line (not per donor).
-
-### How the 138 lines are split, by scheme
-
-| scheme | folds per repeat | outer test set | repeated? | final result |
-|---|---|---|---|---|
-| plain 5-fold | 5 | 27-28 lines | 10x | 10 pooled metrics -> mean +/- SD |
-| donor-grouped 5-fold | 5 | **24-33** lines, all from held-out donors | 10x | 10 pooled metrics -> mean +/- SD |
-| LOCO | 138 | exactly **1** line | no | 138 predictions -> **one** pooled metric, no SD |
-| LODO | 20 | **1-18** lines (one donor's entire set) | no | 138 predictions -> **one** pooled metric, no SD |
-
-In every scheme a repeat's folds partition all 138 lines, so each line is
-predicted exactly once per repeat and the pooled metric is always computed on
-n=138. What differs is *how* the held-out set is chosen and how many times
-the split is redrawn.
-
-Three things this makes visible:
-
-- **Donor-grouped folds are uneven (24-33), plain folds are not (27-28).**
-  Grouping constrains whole donors into a fold, so sizes cannot be balanced
-  exactly. The donor with 18 lines forces one fold to be large.
-- **LOCO and LODO are not repeated**, because they are exhaustive -- there is
-  only one way to leave out each line, or each donor. Nothing to reshuffle,
-  so `repeat=0` for every fold and the reported SD is `NaN`, not zero. Their
-  numbers are single estimates and are not directly comparable to the
-  repeat-averaged schemes.
-- **LOCO cannot support per-fold metrics at all** (a one-line test set has no
-  ROC-AUC), which is the clearest illustration of why metrics are pooled
-  within a repeat rather than averaged across folds.
-
-
-
-### Flat vs nested: which is used for what
-
-Both are computed for every scheme, but only one is ever quoted as
-performance. Per task, `results/results_{task}.csv` holds:
-
-| tuning | rows | what a row is | used for |
-|---|---|---|---|
-| flat | 440 | one `(scheme, model, k, param)` combination | the robustness grid, **and picking the config for the importance tables** |
-| nested | 8 | one `(scheme, model)` | **every reported performance number** |
-
-(440 = 4 schemes x 2 models x 11 `k` x 5 regularisation values; 8 = 4 schemes
-x 2 models.)
-
-**Every performance figure in this README is nested.** R2 0.653, AUC 0.947,
-the all-schemes table -- all nested. Flat scores are optimistically biased,
-because the same predictions are used both to choose the winning
-configuration and to report its score. They are never quoted as performance.
-
-**But the feature-importance tables take their configuration from the FLAT
-grid** (`feature_importance.py`, `select_winning_config_one_se`, which filters
-`tuning == "flat"`). That looks inconsistent and is deliberate:
-
-> Nested CV does not produce *a* configuration. It produces 50 of them -- one
-> per outer fold -- and they disagree substantially (the modal choice wins
-> only ~9-10 of 50; see "Hyperparameter selection is unstable"). There is
-> nothing to read a coefficient off.
-
-So to fit one set of coefficients and SHAP values you need one fixed model,
-and the one-SE rule scans the flat grid to choose it defensibly. Using flat
-here is safe because **the flat score is never reported** -- it is used only
-to *rank* configurations, not to claim performance.
-
-The consequence to keep in mind: **the importance tables and the headline
-numbers describe slightly different models.** The "Configurations selected"
-table at the bottom lists both side by side (modal nested vs. one-SE flat)
-precisely so the gap is visible rather than implicit.
-
-
-### How nested CV actually runs (one repeat)
-
-```
-138 cell lines
-│
-├─ Outer fold 0: hold out 28 lines
-│  ├─ Use the remaining 110 for inner CV
-│  │  ├─ Inner fold 0: ~74 train / ~36 validate -> score every candidate
-│  │  ├─ Inner fold 1: ~74 train / ~36 validate -> score every candidate
-│  │  └─ Inner fold 2: ~74 train / ~36 validate -> score every candidate
-│  ├─ Average the 3 inner scores per candidate; pick the best (raw argmax --
-  │     the one-SE rule is NOT applied here, see "What the one-SE rule is")
-│  ├─ Discard the three inner models
-│  ├─ Refit ONE model on all 110 outer-training lines
-│  └─ Predict the 28 outer-test lines ONCE
-│
-├─ Outer fold 1: 28 held-out lines predicted once
-├─ Outer fold 2: 27
-├─ Outer fold 3: 27
-└─ Outer fold 4: 28
-                 ───
-Final out-of-fold predictions: 28+28+27+27+28 = 138, each line exactly once
-```
-
-The 28 outer-test lines are invisible for the entire inner loop -- candidate
-scoring, selection and refit all happen inside the 110. Outer fold 0
-contributes 28 predictions, not 3 or 55.
-
-Per model, per outer fold: 55 candidates x 3 inner folds = **165 inner fits**,
-then 1 refit. Across 50 outer folds and 2 model families: **16,500 inner fits
-+ 100 refits** per task.
-
-Totals for one reported number:
-
-| | |
-|---|---|
-| outer fitted models | 5 folds x 10 repeats = **50** |
-| final prediction values | 138 lines x 10 repeats = **1,380** |
-| metrics computed | **10** (one pooled AUC/R2 per repeat) |
-| reported | mean +/- SD across those 10 |
-
-### How flat CV runs -- and one thing it does NOT do
-
-**Flat CV does not select a config per fold and then compare folds.** There
-is no "best config for fold 0". Each candidate is scored the same pooled way
-the headline is:
-
-```
-for each of the 55 candidates:
-    for each repeat (10):
-        predict all 5 folds' held-out lines -> pool -> 138 predictions
-        -> ONE score for that (candidate, repeat)
-    -> 10 scores -> mean +/- SD across repeats
-compare the 55 candidates by that mean; apply the one-SE rule once
-```
-
-So a flat row's `mean +/- SD` is across the **10 repeats**, exactly like a
-nested row -- not across the 5 folds and not across the 28 lines in a fold.
-The config is chosen **once**, from 55 means, not 5 times and then reduced.
-
-The only structural difference from nested is *where the choice happens*:
-nested chooses inside each outer fold (so the choice never sees the test
-lines); flat chooses once, afterwards, over all the data. That is precisely
-why the flat score is optimistically biased and is never reported.
-
-### Best flat-CV configurations (donor_grouped)
-
-Selection metric is MAE for regression and ROC-AUC for classification; R2 and
-AUC shown for readability.
-
-| model | raw argmax | one-SE choice | configs within 1 SE |
-|---|---|---|---|
-| ridge | k=5, alpha=0.01 (R2 0.6801) | **k=5, alpha=0.1** (R2 0.6804) | 2/55 |
-| lasso | k=5, alpha=0.001 (R2 0.6838) | **k=5, alpha=0.001** (R2 0.6838) | 2/55 |
-| logistic_l2 | k=6, C=0.01 (AUC 0.9638) | **k=4, C=0.01** (AUC 0.9629) | 2/55 |
-| logistic_l1 | k=4, C=0.1 (AUC 0.9640) | **k=2, C=0.1** (AUC 0.9632) | 9/55 |
-
-The one-SE rule only moves the answer where the band is genuinely wide:
-`logistic_l1` has 9 statistically indistinguishable configs so it drops from
-k=4 to k=2, and `logistic_l2` from k=6 to k=4. For ridge and lasso only 2
-configs qualify, so it barely bites.
-
-### Reconciling the two: they produce different things
-
-The tension is real -- nested CV already does model selection, so why also
-run flat? Because they answer different questions and yield different kinds
-of output.
-
-| | question | output | score trustworthy? |
-|---|---|---|---|
-| nested | how well does *the procedure* generalise? | a **number** | yes -- this is the reported performance |
-| flat | which single configuration ranks best? | a **choice** | no -- never quoted |
-
-Nested CV evaluates the whole pipeline *including its own tuning step*, which
-is what makes it honest. That same property is why it **cannot hand you a
-model**: it fits 50, each choosing its own config, and they disagree (the
-modal choice wins only ~9-10 of 50). There is no single "the nested model" to
-read a coefficient off.
-
-So the division is:
-
-> **Performance claims come from nested. Configuration choices come from
-> flat. No number is ever taken from flat.**
-
-Being straight about the residual nuance: the flat ranking is computed over
-all 138 lines, so the chosen config has seen every outcome. For the
-coefficients and SHAP that is fine -- they are descriptive summaries of a
-full-data fit, not performance claims. For the LOCO and permutation deltas it
-is slightly less clean: those are measured out-of-fold but at a config chosen
-using all the data, a mild optimism. It largely cancels because the deltas
-are within-fold with/without comparisons at the same config, but "largely
-cancels" is not "does not exist". The alternative -- using the modal nested
-config -- is also defensible and close (regression: one-SE k=5 vs modal k=4);
-see "Configurations selected". The one-SE flat config was chosen because a
-mode that wins 9-10 times out of 50 is a weak summary.
-
-### What `donor_grouped` actually does
-
-Two things it is **not**: it does not put the same donors in every fold, and
-it does not average lines within a donor.
-
-**One row is always one cell line.** 138 rows, 138 predictions. The only
-averaging is pool-then-line on the features (mean per `(cell_line, pool)`,
-then unweighted mean across that line's pools). Donors are never collapsed;
-weighting is equal per line, not per donor.
-
-What it does: **every line from a given donor lands in the same fold**, so a
-donor is entirely in train or entirely in test, never split across the two.
-Different folds hold out different donors.
-
-`folds.py` passes `groups=lines["donor"]` to `StratifiedGroupKFold`. From the
-committed assignments, repeat 0 (138 lines, 20 donors, 5 folds):
-
-| fold | test lines | from donors |
-|---|---|---|
-| 0 | 28 | 2 |
-| 1 | 28 | 5 |
-| 2 | 27 | 3 |
-| 3 | 27 | 5 |
-| 4 | 28 | 5 |
-
-Donors appearing in both train and test of the same fold: **0**.
-
-Note fold 0 holds out 28 lines from only **2** donors -- that is the donor
-with 18 lines. Folds are balanced by line count, not donor count.
-
-**Why:** 136 of 138 lines share a donor with another line. Without grouping a
-model can memorise a donor's genotype from one line and be scored on its
-sibling. Grouping blocks that; it costs ~0.012 R2, which is the number
-quantifying donor leakage.
-
-Not to be confused with **LODO**, which is one fold per donor (20 folds,
-each holding out that donor's entire set of lines).
-
-## Leakage safety
-- PCA/HVG refit **per fold**: exclude held-out lines' (or held-out donors' lines') cells from the fitting pool; project their cells into that fold's PCA space. Generalizes `005_d11_pca_features.py`'s `fit_mask` beyond just pool11.
-- **pool11 rule frozen** from EDA (depth ~1,900 vs ~10-18K elsewhere) — always excluded from fitting when present in training, never tuned on results. Confirmed harmless: 4.2% of D11 cells (9,603/227,983); ~218K remain.
-- **Pool correction**: residualize each feature on pool identity using that fold's *training* pool means, computed at the `(cell_line, pool)` level before line-averaging (slots into the existing `004`/`005` pool→line pipeline). Both corrected/uncorrected variants run.
-- **No donor feature-correction** — donor is likely real signal, not nuisance; donor-*grouping* is the right tool, correcting it out risks deleting the signal we want.
-- Known unfixable limitation: D11/D52 cell-type labels came from the paper's own global clustering, not refit per fold — diffuse, minor, unavoidable.
-
-## Metrics
-
-**Two different thresholds, easily confused.** `0.2` is the *outcome*
-threshold that turns `diff_efficiency` into the success/failure label --
-it defines the question. `0.5` is the *decision* threshold that turns a
-predicted probability into a hard call (`harness.DECISION_THRESHOLD`).
-Sensitivity, specificity, balanced accuracy and F1 are all computed at
-**0.5**, not 0.2. (An earlier version of this line said "@ 0.2", which
-conflated exactly the two things the next sentence warned about.)
-
-### Classification
-
-| metric | what it is | what it is sensitive to | trivial baseline |
-|---|---|---|---|
-| **ROC-AUC** | P(a random success scores above a random failure) | ranking only; threshold-free and unaffected by where you set the cutoff | 0.500 |
-| **PR-AUC** | area under precision-recall; ignores true negatives entirely | the positive class; false alarms cannot hide behind a big negative class | **prevalence, 0.696** |
-| **balanced accuracy** | (sensitivity + specificity) / 2 at the 0.5 cutoff | both classes equally, regardless of imbalance | 0.500 |
-| **sensitivity** | of true successes, the fraction called success | misses on the majority class | 1.000 |
-| **specificity** | of true failures, the fraction called failure | misses on the **minority** class -- the one that matters here | 0.000 |
-| **F1** | harmonic mean of precision and recall, success as positive | the positive class only; ignores true negatives | **0.821** |
-| **Brier** | mean squared error of the predicted probability (lower better) | *calibration* -- whether a "0.8" means 80% | 0.212 |
-
-**Why this set rather than one number.** Each covers a failure the others
-miss:
-
-- **Accuracy is disqualified outright.** 70% of lines succeed, so guessing
-  "success" every time scores 0.70. Balanced accuracy replaces it.
-- **ROC-AUC checks ranking, Brier checks the numbers.** A model can rank
-  perfectly (AUC 1.0) while every probability is wrong -- and these
-  probabilities matter, because the useful operating point is chosen by
-  moving the threshold. Only Brier catches that.
-- **PR-AUC covers ROC-AUC's blind spot at imbalance.** With 96 negatives
-  available, false positives get diluted in the false-positive rate but
-  not in precision.
-- **Sensitivity and specificity are reported separately**, not just as
-  their average, because they fail asymmetrically. The interesting class
-  here is the 42 failures, and specificity is the metric that tracks them
-  -- balanced accuracy alone would hide a specificity collapse behind high
-  sensitivity.
-- **F1 is reported for convention, not evidence.** Its trivial baseline is
-  **0.821** on this data, so a "good" F1 of 0.945 is far less impressive
-  than it looks. It is in the table mainly so nobody has to recompute it.
-
-Every baseline is in the results table so each metric can be read against
-what guessing achieves, rather than against 0 or 1.
-
-### Regression
-
-| metric | what it is | why it is here | trivial baseline |
-|---|---|---|---|
-| **R2** | fraction of outcome variance explained | the conventional summary; comparable across datasets | 0.000 |
-| **MAE** | mean absolute error, in efficiency units | directly interpretable -- "typically wrong by 0.138 efficiency" | 0.266 |
-| **RMSE** | root mean squared error | penalises large misses; **RMSE >> MAE flags a few big errors** rather than uniform mediocrity | 0.298 |
-| **out-of-range** | fraction of predictions outside [0, 1] | a sanity check: the outcome is a proportion, and a linear model is not constrained to produce one | 0.000 |
-
-MAE and RMSE are both reported because the gap between them is
-informative. Here 0.138 vs 0.175 is a moderate ratio -- errors are fairly
-uniform, not driven by a handful of catastrophic misses.
-
-**R2 is the one to distrust here.** It is inflated by the bimodal outcome:
-most of the 0.653 comes from separating the failure clump from the success
-clump, not from precision within either. Within-success R2 is ~0.17-0.22
-and within-failure R2 is about **-14**. MAE 0.138 against a failure clump
-whose entire range is 0.173 makes the same point in interpretable units.
-Inner-loop tuning therefore selects on **MAE**, not R2.
-
-## Reproducibility
-- Fixed seeds; persist actual fold assignments (line IDs per scheme × repeat × fold) to a file, not just the seed.
-- `models.SEED` pins `random_state` on both logistic factories. `saga` (used by `logistic_l1`) is stochastic; unseeded it drifted ~5.7e-4 between runs, which showed up as spurious 4th-decimal diffs in regenerated importance tables.
-- Fold features are written incrementally per fold and a run can be resumed; see the D30 section for the provenance gap that makes resume unsafe across a settings change.
-
-## Scope/cost warning
-Full parallel grid (2 groupings × 2 tuning × 2 corrections × 2 model families, repeated K-fold, + LOCO/LODO) means potentially hundreds of fold-specific PCA refits (~90s each in `005`). Time one fold first; cache fold-specific fits before committing to the full run.
-
 ## Results distillation
 
-**"Headline model" = the single configuration reported as *the* result**, as
-opposed to the robustness grid of everything that was run. Without one there
-are 16 numbers per task (4 schemes x 2 tuning modes x 2 model families) and
-no answer -- and whichever gets quoted, a reader cannot tell whether it was
-chosen before or after seeing the scores.
+*Historical. This documents the pre-registration regime phase 1 used. The
+current analysis selects its configuration by flat CV + one-SE instead — see
+[`METHODS.md`](METHODS.md) §4. The constants below still exist in the code, so
+they are documented here rather than deleted.*
 
-It is **pre-registered, not selected on performance**. Committed as constants
-in `run_experiment.py` and enforced by `select_headline()`:
+Phase 1 committed one configuration per task **before** looking at scores, to
+stop the best of 16 numbers per task being quoted after the fact. The constants
+live in `run_experiment.py` and are enforced by `select_headline()`:
 
 ```python
 HEADLINE       = {"scheme": "donor_grouped", "tuning": "nested", "pool_correction": False}
 HEADLINE_MODEL = {"regression": "ridge", "classification": "logistic_l2"}
 ```
 
-Each choice was made on design grounds, not on scores: `donor_grouped`
-because it is the strictest realistic test; `nested` because flat CV tunes
-and reports on the same rows; no pool-correction per the investigation below;
-ridge / logistic_l2 as the L2 default, with L1 as the variant.
+Each was chosen on design grounds, not on scores: `donor_grouped` because it is
+the strictest realistic test; `nested` because flat CV tunes and reports on the
+same rows; no pool-correction per the investigation above; ridge / logistic_l2
+as the L2 default with L1 as the variant.
 
-Note the L1 variants score *higher* (lasso R2 0.669 vs ridge 0.653;
-logistic_l1 AUC 0.951 vs 0.947). A paired per-repeat comparison at matched
-one-SE configs shows lasso's edge is real but tiny -- +0.0033 R2, winning
-9/10 repeats, t-test p=0.0006. Most of the larger headline gap is nested CV's
-per-fold reselection noise, not a model difference. They are reported as
-labelled secondary results; quoting them as "the" headline is exactly the
-cherry-picking the pre-registration exists to prevent, and that failure
-actually occurred once -- see "Corrections from the audit" #3.
+The L1 variants scored slightly higher in phase 1. A paired per-repeat
+comparison at matched one-SE configurations showed lasso's edge was real but
+tiny — +0.0033 R², winning 9 of 10 repeats, t-test p = 0.0006 — and most of the
+apparent gap was nested CV's per-fold reselection noise rather than a model
+difference.
 
-- Full grid still gets computed, but pre-register ONE headline config *before* looking at results, to avoid cherry-picking: **donor-grouped + nested CV + repeated stratified K-fold + Ridge/L2-logistic** (pool-correction dropped entirely -- see "Pool-correction dropped" above). Report this first, with mean ± SD.
-- Everything else (plain grouping, flat CV, Lasso/L1, LOCO/LODO) becomes a secondary "robustness grid" — one table/heatmap (rows = config, cols = key metric) to scan for consistency, not N separate headline results.
+**The lesson outlives the mechanism.** Whatever declares the configuration — a
+pre-registration then, the one-SE rule now — the reporting function has to
+filter on it, or the declaration is decorative. That failure actually occurred
+once; see "Corrections from the audit" #3.
 
 ## Architecture (Open-Closed + reusable for D30→D52)
 - **Model registry, not conditionals**: a list of `ModelSpec(name, estimator_factory, param_grid)` entries (Ridge/Lasso/L2-logistic/L1-logistic to start). The CV harness only ever calls the sklearn estimator interface (`.fit`/`.predict`/`.predict_proba`) generically — adding a model later (e.g. random forest) = one new registry entry, zero changes to harness code.
 - **Feature extraction (timepoint-parameterized) vs. CV harness (timepoint-agnostic)** — *aspirational; see "D30 readiness" above for what actually still hardcodes D11*: feature extraction takes a timepoint (D11 now, D30 later — same 138 qualifying lines, since the qualifying list already requires ≥10 cells at D11 *and* D30 *and* D52) and a fold's train/held-out line split, returns feature matrices. The CV/tuning/metrics harness takes `X_train, y_train, X_test, y_test` + the model registry and is completely agnostic to which timepoint produced the features. D30→D52 later = swap the feature-extraction call, harness untouched.
-
 ## Files
 - `features.py` — feature-extraction, parameterized by timepoint (D11 now; reusable for D30).
 - `folds.py` — fold construction (plain/donor-grouped repeated stratified K-fold, LOCO, LODO) — timepoint-agnostic.
 - `models.py` — model registry (`ModelSpec` list).
 - `harness.py` — CV/tuning/metrics harness using the registry + fold module.
 - `run_regression.py` / `run_classification.py` — orchestration entry points.
-- Summary table + comparison plots (headline config; plain vs. donor gap; flat vs. nested; corrected vs. uncorrected).
-
+- Summary table + comparison plots (selected config; plain vs. donor gap; flat vs. nested; corrected vs. uncorrected).
 ## Verify
 - Per-fold fitting cell counts stay large; fold assignments reproducible; classification metrics only where both classes present; repeated-CV reported per-repeat not pooled; regression predictions checked against [0,1].
-
-## Latest results
-
-Authoritative current numbers. Regenerated 2026-09-09 in a single clean
-run on one consistent code state (after the seed pin and the fixes in
-"Second correctness review"), so no figure here is a mix of pre- and
-post-fix runs. Everything below is the pre-registered configuration:
-**donor_grouped grouping, nested CV, no pool-correction**.
-
-### Headline (pre-registered model per task)
-
-Nested CV, no pool-correction, mean +/- SD across 10 repeats. Columns are the
-two repeated schemes: `plain` ignores donors, `donor_grouped` never lets a
-donor appear in both train and test.
-
-Every metric the harness computes, both repeated schemes, headline and
-secondary models together. See "Metrics" for what each one means.
-
-**Classification**
-
-| model | scheme | ROC-AUC | PR-AUC | balanced acc | sensitivity | specificity | F1 | Brier |
-|---|---|---|---|---|---|---|---|---|
-| **logistic_l2** *(headline)* | plain | **0.940 +/- 0.012** | **0.964 +/- 0.011** | **0.914 +/- 0.013** ★ | **0.931 +/- 0.016** | **0.898 +/- 0.023** ★ | **0.943 +/- 0.009** | **0.102 +/- 0.006** |
-| **logistic_l2** *(headline)* | **donor-grouped** | **0.947 +/- 0.007** | **0.968 +/- 0.004** | **0.913 +/- 0.013** | **0.940 +/- 0.007** | **0.886 +/- 0.022** | **0.945 +/- 0.007** ★ | **0.097 +/- 0.008** |
-| logistic_l1 *(secondary)* | plain | 0.948 +/- 0.011 | 0.968 +/- 0.012 | 0.904 +/- 0.019 | 0.933 +/- 0.005 | 0.874 +/- 0.037 | 0.939 +/- 0.009 | 0.077 +/- 0.007 |
-| logistic_l1 *(secondary)* | donor-grouped | 0.951 +/- 0.008 ★ | 0.970 +/- 0.009 ★ | 0.912 +/- 0.013 | 0.942 +/- 0.011 ★ | 0.883 +/- 0.021 | 0.945 +/- 0.008 ★ | 0.075 +/- 0.004 ★ |
-| *trivial baseline* | -- | *0.500* | *0.696* | *0.500* | *1.000* | *0.000* | *0.821* | *0.212* |
-
-**Regression**
-
-| model | scheme | R2 | MAE | RMSE | out-of-range |
-|---|---|---|---|---|---|
-| **ridge** *(headline)* | plain | **0.676 +/- 0.013** | **0.134 +/- 0.003** ★ | **0.170 +/- 0.003** | **0.050 +/- 0.007** |
-| **ridge** *(headline)* | **donor-grouped** | **0.653 +/- 0.021** | **0.138 +/- 0.004** | **0.175 +/- 0.005** | **0.043 +/- 0.005** ★ |
-| lasso *(secondary)* | plain | 0.680 +/- 0.016 ★ | 0.134 +/- 0.003 ★ | 0.169 +/- 0.004 ★ | 0.049 +/- 0.008 |
-| lasso *(secondary)* | donor-grouped | 0.668 +/- 0.015 | 0.135 +/- 0.003 | 0.172 +/- 0.004 | 0.046 +/- 0.004 |
-| *predict the mean* | -- | *0.000* | *0.266* | *0.298* | *0.000* |
-
-★ = best in that column among the four fitted rows (baselines excluded).
-**Bold** marks the pre-registered headline row, which is a separate thing
-from being best. Higher is better everywhere except **Brier, MAE, RMSE and
-out-of-range**, where lower is better -- so the star follows the minimum in
-those columns.
-
-Two things the full table shows that the headline number alone does not:
-
-- **L1 is better calibrated than L2** (Brier 0.075 vs 0.097, a 23% lower
-  squared probability error) even though their AUCs are within one SD.
-  `class_weight="balanced"` pushes L2's probabilities away from the true
-  base rate more than L1's; ranking is unaffected, calibration is not.
-- **4-5% of regression predictions fall outside [0, 1]** -- impossible
-  values for a proportion. A linear model has no constraint keeping it in
-  range, and this is another reason to use the classifier for decisions.
-
-**Donor grouping costs regression a little and classification nothing.**
-Ridge loses 0.023 R2 (0.676 -> 0.653) and lasso 0.011 (0.680 -> 0.669). Both classification models are flat or slightly *better*
-under grouping (L2 0.940 -> 0.947, L1 0.948 -> 0.951), which is the same
-conclusion the LOCO/LODO contrast gives: donor leakage is real but small for
-regression and absent for classification.
-
-**The PCA fitting population barely matters.** Every number above uses the
-baseline basis. Refitting the whole pipeline on the qualifying-cells-only
-basis moves the donor-grouped results by:
-
-| model | delta |
-|---|---|
-| ridge | +0.0141 R2 |
-| lasso | +0.0040 R2 |
-| logistic_l2 | +0.0013 AUC |
-| logistic_l1 | -0.0013 AUC |
-
-All within about one SD, and only ridge moves by more than a rounding error.
-The variant does roughly halve regression's across-repeat SD (0.021 ->
-0.012), so it is a little more stable, but no conclusion changes either way.
-Full comparison in "Fitting population: the qualifying-only PCA variant".
-
-### Configurations selected
-
-Nested CV re-selects per outer fold, so `modal` is the most common choice
-across 50 folds, not "the" configuration -- the spread is wide (see
-"Regenerated results" note below). The one-SE column is the single config
-used for the feature-importance tables.
-
-| run | model | modal nested config | one-SE config (importance tables) |
-|---|---|---|---|
-| baseline | ridge | k=4, alpha=0.01 | k=5, alpha=0.1 |
-| baseline | lasso | k=5, alpha=0.001 | k=5, alpha=0.001 |
-| baseline | logistic_l2 | k=2, C=100.0 | k=4, C=0.01 |
-| baseline | logistic_l1 | k=2, C=1.0 | k=2, C=0.1 |
-| qualifying-only | ridge | k=6, alpha=1.0 | k=6, alpha=0.1 |
-| qualifying-only | lasso | k=6, alpha=0.001 | k=6, alpha=0.001 |
-| qualifying-only | logistic_l2 | k=8, C=0.01 | k=8, C=0.01 |
-| qualifying-only | logistic_l1 | k=0, C=0.1 | k=3, C=0.1 |
-
-Note `logistic_l1` selects **k=0** most often on the qualifying-only basis
--- i.e. the modal nested model uses the cell-type proportions and no PCs
-at all, and still reaches AUC 0.950. Consistent with the standing finding
-that the proportions (`phat_NB` especially) carry most of the
-classification signal.
-
-### Hyperparameter selection is unstable -- read single-config tables with that in mind
-
-Recovering the per-fold selections (they were previously computed and
-dropped) shows no configuration dominates. Across 50 outer folds the modal
-choice wins only ~9-10 times, spread over 13-19 distinct configs, with `C`
-ranging the full four orders of magnitude. Full per-fold record in
-`results/nested_selections_{task}{suffix}.csv` (516 rows each). This is why the
-headline is pre-registered and why the one-SE rule is used -- and why any
-single-config coefficient table is one draw from a wide distribution.
-
-### Files backing this section
-
-| | baseline | qualifying-only |
-|---|---|---|
-| grids | `results/results_{task}.csv` | `results/results_{task}_qualonly.csv` |
-| per-fold selections | `results/nested_selections_{task}.csv` | `results/nested_selections_{task}_qualonly.csv` |
-| importance | `results/feature_importance_table_{task}_{model}.csv` | `results/..._{model}_qualonly.csv` |
-| fold features | `fold_data/fold_features_D11_full.csv` | `fold_data/fold_features_D11_qualonly.csv` |
-| global PCA basis | `metadata_eda/pca/d11_pca_coords_per_line.csv` | `..._qualonly.csv` |
-
----
-
 # Label variants: running an alternative outcome
 
 Added when a second outcome — `DA / all D52 cells`, untreated cells only — was
