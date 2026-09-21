@@ -19,115 +19,6 @@ Full write-ups: **[FINDINGS.md](FINDINGS.md)** (results + literature context) ·
 [`modeling/METHODS.md`](modeling/METHODS.md) (methods) ·
 [`modeling/results/README.md`](modeling/results/README.md) (output files)
 
-## How this was built with AI
-
-Built with [Claude Code](https://claude.com/claude-code) and
-[Codex](https://openai.com/codex). The point is not that agents wrote the code —
-it is that **two independent agents were used to check each other**, on a problem
-where a bug does not crash: it emits a plausible, wrong number into a table.
-
-```mermaid
-flowchart TB
-    SPEC["<b>Human</b><br/>scientific question<br/>+ constraints"]
-
-    subgraph D["① decide the approach"]
-        direction LR
-        PLAN["<b>Claude</b><br/>proposes"] --> OPIN["<b>Codex</b><br/>independent opinion<br/><i>asked first, blind<br/>to Claude's</i>"]
-        OPIN --> CMP["<b>Human</b><br/>compares both,<br/>decides"]
-        CMP -. iterate .-> PLAN
-    end
-
-    subgraph B["② build it"]
-        direction LR
-        IMPL["<b>Claude</b><br/>implements"] --> CHECK["<b>Codex</b><br/>blind contract tests<br/>+ adversarial review"]
-        CHECK -. defect .-> FIX["<b>Claude</b><br/>fixes, records<br/>what changed"]
-        FIX -.-> CHECK
-    end
-
-    subgraph W["③ write it up"]
-        direction LR
-        DRAFT["<b>Claude</b><br/>drafts, re-checks<br/>every number"] --> EDIT["<b>Human</b><br/>directs the story,<br/>cuts, challenges"]
-        EDIT -. iterate .-> DRAFT
-    end
-
-    SPEC --> PLAN
-    CMP --> IMPL
-    CHECK --> DRAFT
-    EDIT --> OUT["published<br/>results"]
-    FIX -.->|"failure mode<br/>worth preventing"| RULES["<b>CLAUDE.md</b><br/>+ skills"]
-    RULES -.-> PLAN
-
-    classDef h fill:#e8efe9,stroke:#6a9c78,color:#26302b
-    classDef c fill:#eef2f6,stroke:#5b7fa6,color:#22303d
-    classDef x fill:#f6eeee,stroke:#a66b5b,color:#3d2622
-    classDef r fill:#f4f1e8,stroke:#a89a6b,color:#332e20
-    classDef o fill:#ffffff,stroke:#8a8f8c,color:#26302b
-    class SPEC,CMP,EDIT h
-    class PLAN,IMPL,FIX,DRAFT c
-    class OPIN,CHECK x
-    class RULES r
-    class OUT o
-    style D fill:#fbfbf9,stroke:#d8dcd9
-    style B fill:#fbfbf9,stroke:#d8dcd9
-    style W fill:#fbfbf9,stroke:#d8dcd9
-```
-
-**The human is in the loop at every stage, not just at the start.** Codex is
-never asked to agree: it gives its opinion *before* seeing Claude's, and writes
-tests from the written contract *before* seeing the implementation — so passing
-means the code matches the specification, not that the tests match the code. The
-two opinions then go back to the human side by side, and the approach that gets
-built is the one chosen from that comparison, usually after a few rounds.
-
-**The write-up is directed, not generated.** The findings document went through
-many passes of exactly this kind: the human sets the through-line and the
-emphasis, cuts what over-explains, and challenges claims that outrun the
-evidence; Claude drafts, re-reads every number against the result files, and
-says plainly what it could not verify.
-
-### The rules were written as the work went
-
-- **A borrowed skill, overridden where it fought the work.** `ponytail`
-  (lazy/minimal coding) was kept for its ladder and its root-cause rule, with
-  [five documented carve-outs](CLAUDE.md): tests belong in the suite, not
-  `__main__` self-checks; methods rationale is the deliverable, not prose debt;
-  never delete provenance to shorten a diff; parameterising for the second
-  timepoint is not premature; and the skill explicitly **does not** cover
-  statistical correctness.
-- **A skill promoted to always-on.** `continuous-independent-audit` runs by
-  default on any session touching `modeling/` — an audit you have to remember to
-  invoke is one you skip on exactly the change that needed it.
-- **One rule deliberately kept out of skill form.** The visible checklist lives
-  in `CLAUDE.md`, not a skill, because a skill has to be invoked and the moment
-  a checklist is most needed is the moment it is least likely to be reached for.
-
-### The audit earned its keep
-
-Defects that changed published numbers, [written down](modeling/README.md#corrections-from-the-audit)
-rather than quietly patched:
-
-- A SHAP calculation mixing standardised coefficients with raw deviations.
-  Fixing it **reversed the feature ranking** — the neuroblast proportion went
-  from trailing a principal component to leading it, which is the finding this
-  project now reports.
-- A "one-SE rule" implemented with one standard *deviation*, ~3× too wide.
-- A reporting function that ignored the pre-registered model, so the
-  best-scoring row won by default — the exact cherry-picking the
-  pre-registration existed to prevent.
-- A second review then found one of those fixes **had been described as complete
-  when it was not**, because a string-replacement edit failed silently.
-
-That last one is why the protocol exists. A single agent reviewing its own work
-would have signed it off.
-
-| | |
-|---|---|
-| Instructions to Claude | [`CLAUDE.md`](CLAUDE.md) |
-| Contract given to Codex | [`AGENTS.md`](AGENTS.md) |
-| Audit status table | [`modeling/docs/audit_ledger.md`](modeling/docs/audit_ledger.md) |
-| What each review found | [`modeling/README.md`](modeling/README.md) |
-| Test suite | [`modeling/tests/`](modeling/tests/) — 124 tests, incl. blind contract tests |
-
 ---
 
 ## Data
@@ -412,3 +303,114 @@ two reasons:
   compare PC indices across tables.
 - Open items tracked in
   [`modeling/docs/audit_ledger.md`](modeling/docs/audit_ledger.md).
+
+---
+
+## How this was built with AI
+
+Built with [Claude Code](https://claude.com/claude-code) and
+[Codex](https://openai.com/codex). The point is not that agents wrote the code —
+it is that **two independent agents were used to check each other**, on a problem
+where a bug does not crash: it emits a plausible, wrong number into a table.
+
+```mermaid
+flowchart TB
+    SPEC["<b>Human</b><br/>scientific question<br/>+ constraints"]
+
+    subgraph D["① decide the approach"]
+        direction LR
+        PLAN["<b>Claude</b><br/>proposes"] --> OPIN["<b>Codex</b><br/>independent opinion<br/><i>asked first, blind<br/>to Claude's</i>"]
+        OPIN --> CMP["<b>Human</b><br/>compares both,<br/>decides"]
+        CMP -. iterate .-> PLAN
+    end
+
+    subgraph B["② build it"]
+        direction LR
+        IMPL["<b>Claude</b><br/>implements"] --> CHECK["<b>Codex</b><br/>blind contract tests<br/>+ adversarial review"]
+        CHECK -. defect .-> FIX["<b>Claude</b><br/>fixes, records<br/>what changed"]
+        FIX -.-> CHECK
+    end
+
+    subgraph W["③ write it up"]
+        direction LR
+        DRAFT["<b>Claude</b><br/>drafts, re-checks<br/>every number"] --> EDIT["<b>Human</b><br/>directs the story,<br/>cuts, challenges"]
+        EDIT -. iterate .-> DRAFT
+    end
+
+    SPEC --> PLAN
+    CMP --> IMPL
+    CHECK --> DRAFT
+    EDIT --> OUT["published<br/>results"]
+    FIX -.->|"failure mode<br/>worth preventing"| RULES["<b>CLAUDE.md</b><br/>+ skills"]
+    RULES -.-> PLAN
+
+    classDef h fill:#e8efe9,stroke:#6a9c78,color:#26302b
+    classDef c fill:#eef2f6,stroke:#5b7fa6,color:#22303d
+    classDef x fill:#f6eeee,stroke:#a66b5b,color:#3d2622
+    classDef r fill:#f4f1e8,stroke:#a89a6b,color:#332e20
+    classDef o fill:#ffffff,stroke:#8a8f8c,color:#26302b
+    class SPEC,CMP,EDIT h
+    class PLAN,IMPL,FIX,DRAFT c
+    class OPIN,CHECK x
+    class RULES r
+    class OUT o
+    style D fill:#fbfbf9,stroke:#d8dcd9
+    style B fill:#fbfbf9,stroke:#d8dcd9
+    style W fill:#fbfbf9,stroke:#d8dcd9
+```
+
+**The human is in the loop at every stage, not just at the start.** Codex is
+never asked to agree: it gives its opinion *before* seeing Claude's, and writes
+tests from the written contract *before* seeing the implementation — so passing
+means the code matches the specification, not that the tests match the code. The
+two opinions then go back to the human side by side, and the approach that gets
+built is the one chosen from that comparison, usually after a few rounds.
+
+**The write-up is directed, not generated.** The findings document went through
+many passes of exactly this kind: the human sets the through-line and the
+emphasis, cuts what over-explains, and challenges claims that outrun the
+evidence; Claude drafts, re-reads every number against the result files, and
+says plainly what it could not verify.
+
+### The rules were written as the work went
+
+- **A borrowed skill, overridden where it fought the work.** `ponytail`
+  (lazy/minimal coding) was kept for its ladder and its root-cause rule, with
+  [five documented carve-outs](CLAUDE.md): tests belong in the suite, not
+  `__main__` self-checks; methods rationale is the deliverable, not prose debt;
+  never delete provenance to shorten a diff; parameterising for the second
+  timepoint is not premature; and the skill explicitly **does not** cover
+  statistical correctness.
+- **A skill promoted to always-on.** `continuous-independent-audit` runs by
+  default on any session touching `modeling/` — an audit you have to remember to
+  invoke is one you skip on exactly the change that needed it.
+- **One rule deliberately kept out of skill form.** The visible checklist lives
+  in `CLAUDE.md`, not a skill, because a skill has to be invoked and the moment
+  a checklist is most needed is the moment it is least likely to be reached for.
+
+### The audit earned its keep
+
+Defects that changed published numbers, [written down](modeling/README.md#corrections-from-the-audit)
+rather than quietly patched:
+
+- A SHAP calculation mixing standardised coefficients with raw deviations.
+  Fixing it **reversed the feature ranking** — the neuroblast proportion went
+  from trailing a principal component to leading it, which is the finding this
+  project now reports.
+- A "one-SE rule" implemented with one standard *deviation*, ~3× too wide.
+- A reporting function that ignored the pre-registered model, so the
+  best-scoring row won by default — the exact cherry-picking the
+  pre-registration existed to prevent.
+- A second review then found one of those fixes **had been described as complete
+  when it was not**, because a string-replacement edit failed silently.
+
+That last one is why the protocol exists. A single agent reviewing its own work
+would have signed it off.
+
+| | |
+|---|---|
+| Instructions to Claude | [`CLAUDE.md`](CLAUDE.md) |
+| Contract given to Codex | [`AGENTS.md`](AGENTS.md) |
+| Audit status table | [`modeling/docs/audit_ledger.md`](modeling/docs/audit_ledger.md) |
+| What each review found | [`modeling/README.md`](modeling/README.md) |
+| Test suite | [`modeling/tests/`](modeling/tests/) — 124 tests, incl. blind contract tests |
