@@ -297,18 +297,15 @@ what a line has already become.
 
 ## 6. Comparison with Jerber et al. and the wider literature
 
-**Jerber et al. predicted differentiation efficiency from *iPSC-stage bulk
-RNA-seq*, before differentiation** [[10]](#references). This analysis uses
-different predictors, a different outcome, and, in one case, a different
-timepoint, so nothing here reproduces their result.
+**Jerber et al. predicted efficiency from *iPSC-stage bulk RNA-seq*, before
+differentiation** [[10]](#references). Different predictors, different outcome,
+different timepoint — nothing here reproduces their result.
 
-> **Three scope limits.** "Not in the source paper" means not in the authors'
-> `Figure_2` notebook and its outcome definition; we did not audit their
-> supplements. **The wider search was a literature search, not a systematic
-> review**, so "not identified" below means not found where we looked and is
-> never a priority claim. And one row is not independent: Puigdevall et al.
-> [[11]](#references) re-analyse *this same dataset*, so agreement with them
-> confirms the reading of the data, not the biology.
+> **Scope.** "Not in the source paper" means not in their `Figure_2` notebook;
+> we did not audit their supplements. The wider search was a literature search,
+> not a systematic review, so "not identified" means not found where we looked —
+> never a priority claim. And row 2 is not independent: Puigdevall et al.
+> [[11]](#references) re-analyse *this same dataset*.
 
 | # | Finding | Status | Basis |
 |---|---|---|---|
@@ -319,28 +316,40 @@ timepoint, so nothing here reproduces their result.
 
 ## 7. Conclusions
 
-- **Could we build a predictive model? Yes.** Day 11 gives ROC-AUC 0.906 ± 0.008
-  and R² 0.503 with no dopaminergic cells yet present — a genuine 41-day
-  forecast. Day 30 gives 0.945 and 0.802, but mostly because the outcome is
-  already partly visible in the predictors.
-- **Which features, and how technical are they?** At day 11 the strongest
-  contributor, `PC3`, is also the most run-associated (η² 0.832), while the
-  best-evidenced feature is the neuroblast proportion (η² 0.035) — more
-  neuroblasts at day 11, fewer dopaminergic neurons at day 52, corroborated
-  independently by a proneural expression axis. At day 30 composition carries
-  everything and expression adds nothing (permutation Δ 0.360 vs 0.018).
-- **How much did the donor matter? Not much, for prediction.** Donor-grouped and
-  plain CV differ by ≤0.007 ROC-AUC, with classification scoring *higher* under
-  donor grouping.
-- **How does it compare with the field?** The source paper predicted from
-  iPSC-stage bulk RNA-seq, so none of this reproduces their result. The
-  objection to counting serotonergic neurons toward dopaminergic yield is
-  independently supported [[13]](#references); the ependymal off-target fate
-  has independent contextual support, though its association with yield is
-  unreplicated [[12]](#references).
-  The day-11 neuroblast association is corroborated by a re-analysis of this
-  same data [[11]](#references), which is not independent replication. We found
-  no prior report of the day-30 composition-versus-expression result.
+**1. Could we build a predictive model? Yes.**
+
+- Day 11 gives ROC-AUC 0.906 ± 0.008 and R² 0.503 with no dopaminergic cells yet
+  present — a genuine 41-day forecast.
+- Day 30 gives 0.945 and 0.802, but mostly because the outcome is already partly
+  visible in the predictors.
+
+**2. Which features, and how technical are they?**
+
+- At day 11 the strongest contributor, `PC3`, is also the most run-associated
+  (η² 0.832).
+- The best-evidenced feature is the neuroblast proportion (η² 0.035): more
+  neuroblasts at day 11, fewer dopaminergic neurons at day 52.
+- A proneural expression axis corroborates it from genes alone.
+- At day 30 composition carries everything and expression adds nothing
+  (permutation Δ 0.360 vs 0.018).
+
+**3. How much did the donor matter? Not much, for prediction.**
+
+- Donor-grouped and plain CV differ by ≤ 0.007 ROC-AUC.
+- Classification scores *higher* under donor grouping — the opposite direction
+  from a leakage signature.
+
+**4. How does it compare with the field?**
+
+- The source paper predicted from iPSC-stage bulk RNA-seq, so none of this
+  reproduces their result.
+- Independently supported: the objection to counting serotonergic neurons
+  toward dopaminergic yield [[13]](#references).
+- Independent contextual support: the ependymal off-target fate, though its
+  association with yield is unreplicated [[12]](#references).
+- Corroborated but not independently: the day-11 neuroblast association, by a
+  re-analysis of this same data [[11]](#references).
+- No prior report found: the day-30 composition-versus-expression result.
 
 ## References
 
