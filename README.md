@@ -271,6 +271,79 @@ Python 3.11, [uv](https://docs.astral.sh/uv/).
 
 ---
 
+## How this was built with AI
+
+Written with [Claude Code](https://claude.com/claude-code) and
+[Codex](https://openai.com/codex) — but the point is not that agents wrote the
+code. It is that **two independent agents were used to check each other**, on a
+problem where a bug does not crash: it emits a plausible, wrong number into a
+results table.
+
+```mermaid
+flowchart TD
+    SPEC["<b>Human</b><br/>scientific question · constraints · what counts as an answer"]
+
+    SPEC --> PLAN["<b>Claude</b><br/>proposes an approach"]
+    PLAN --> OPIN["<b>Codex</b><br/>independent opinion<br/><i>asked before Claude reveals its own</i>"]
+    OPIN --> PICK["<b>Human</b><br/>decides, from the comparison"]
+    PICK --> IMPL["<b>Claude</b><br/>implements"]
+
+    IMPL --> BLIND["<b>Codex</b><br/>blind contract tests<br/><i>written from the spec,<br/>without reading the code</i>"]
+    IMPL --> REV["<b>Codex</b><br/>adversarial review"]
+
+    BLIND --> GATE{"gate passes?"}
+    REV --> GATE
+
+    GATE -- defect --> FIX["<b>Claude</b><br/>fixes · records the defect<br/>and what it changed"]
+    FIX --> BLIND
+    GATE -- clean --> OUT["results · figures · write-up"]
+
+    FIX -.->|"a failure mode worth preventing"| RULES["<b>CLAUDE.md · AGENTS.md</b><br/>updated so the next session<br/>cannot repeat it"]
+    RULES -.-> PLAN
+
+    classDef human fill:#e8efe9,stroke:#6a9c78,color:#26302b
+    classDef claude fill:#eef2f6,stroke:#5b7fa6,color:#22303d
+    classDef codex fill:#f6eeee,stroke:#a66b5b,color:#3d2622
+    classDef rules fill:#f4f1e8,stroke:#a89a6b,color:#332e20
+    class SPEC,PICK human
+    class PLAN,IMPL,FIX claude
+    class OPIN,BLIND,REV codex
+    class RULES rules
+```
+
+**Two agents, two jobs.** Claude writes; Codex is never asked to agree. It is
+asked for its own opinion *before* seeing Claude's, and it writes tests from the
+written contract *before* seeing the implementation — so passing means the code
+matches the specification, not that the tests match the code.
+
+**The audit earned its keep.** It caught defects that changed published numbers,
+and they are [written down](modeling/README.md#corrections-from-the-audit)
+rather than quietly patched:
+
+- A SHAP calculation mixing standardised coefficients with raw deviations.
+  Fixing it **reversed the feature ranking** — the neuroblast proportion went
+  from trailing a principal component to leading it, which is the finding this
+  project now reports.
+- A "one-SE rule" implemented with one standard *deviation*, roughly three times
+  too wide.
+- A reporting function that ignored the pre-registered model, so the
+  best-scoring row won by default — the exact cherry-picking the
+  pre-registration existed to prevent.
+- A second review then found that one of the fixes above **had been described
+  here as complete when it was not**, because a string-replacement edit failed
+  silently.
+
+That last one is the reason the protocol exists. A single agent reviewing its
+own work would have signed it off.
+
+| | |
+|---|---|
+| Instructions to Claude | [`CLAUDE.md`](CLAUDE.md) |
+| Contract given to Codex | [`AGENTS.md`](AGENTS.md) |
+| Audit status table | [`modeling/docs/audit_ledger.md`](modeling/docs/audit_ledger.md) |
+| What each review found | [`modeling/README.md`](modeling/README.md) |
+| Test suite | [`modeling/tests/`](modeling/tests/) — 124 tests, incl. blind contract tests and a synthetic-data run of the real pipeline |
+
 ## † On the outcome definition
 
 The published metric is `(DA + Sert) / all D52 cells`. This project uses
