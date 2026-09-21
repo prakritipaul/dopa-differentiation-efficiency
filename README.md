@@ -27,31 +27,63 @@ it is that **two independent agents were used to check each other**, on a proble
 where a bug does not crash: it emits a plausible, wrong number into a table.
 
 ```mermaid
-flowchart LR
-    SPEC["<b>Human</b><br/>specifies"] --> PLAN["<b>Claude</b><br/>plans"]
-    PLAN --> OPIN["<b>Codex</b><br/>independent<br/>opinion"]
-    OPIN --> IMPL["<b>Claude</b><br/>implements"]
-    IMPL --> CHECK["<b>Codex</b><br/>blind tests<br/>+ review"]
-    CHECK -- defect --> FIX["<b>Claude</b><br/>fixes, records<br/>what changed"]
-    FIX --> CHECK
-    CHECK -- clean --> OUT["results<br/>write-up"]
-    FIX -.-> RULES["<b>CLAUDE.md</b><br/>+ skills"]
+flowchart TB
+    SPEC["<b>Human</b><br/>scientific question<br/>+ constraints"]
+
+    subgraph D["① decide the approach"]
+        direction LR
+        PLAN["<b>Claude</b><br/>proposes"] --> OPIN["<b>Codex</b><br/>independent opinion<br/><i>asked first, blind<br/>to Claude's</i>"]
+        OPIN --> CMP["<b>Human</b><br/>compares both,<br/>decides"]
+        CMP -. iterate .-> PLAN
+    end
+
+    subgraph B["② build it"]
+        direction LR
+        IMPL["<b>Claude</b><br/>implements"] --> CHECK["<b>Codex</b><br/>blind contract tests<br/>+ adversarial review"]
+        CHECK -. defect .-> FIX["<b>Claude</b><br/>fixes, records<br/>what changed"]
+        FIX -.-> CHECK
+    end
+
+    subgraph W["③ write it up"]
+        direction LR
+        DRAFT["<b>Claude</b><br/>drafts, re-checks<br/>every number"] --> EDIT["<b>Human</b><br/>directs the story,<br/>cuts, challenges"]
+        EDIT -. iterate .-> DRAFT
+    end
+
+    SPEC --> PLAN
+    CMP --> IMPL
+    CHECK --> DRAFT
+    EDIT --> OUT["published<br/>results"]
+    FIX -.->|"failure mode<br/>worth preventing"| RULES["<b>CLAUDE.md</b><br/>+ skills"]
     RULES -.-> PLAN
 
     classDef h fill:#e8efe9,stroke:#6a9c78,color:#26302b
     classDef c fill:#eef2f6,stroke:#5b7fa6,color:#22303d
     classDef x fill:#f6eeee,stroke:#a66b5b,color:#3d2622
     classDef r fill:#f4f1e8,stroke:#a89a6b,color:#332e20
-    class SPEC h
-    class PLAN,IMPL,FIX c
+    classDef o fill:#ffffff,stroke:#8a8f8c,color:#26302b
+    class SPEC,CMP,EDIT h
+    class PLAN,IMPL,FIX,DRAFT c
     class OPIN,CHECK x
     class RULES r
+    class OUT o
+    style D fill:#fbfbf9,stroke:#d8dcd9
+    style B fill:#fbfbf9,stroke:#d8dcd9
+    style W fill:#fbfbf9,stroke:#d8dcd9
 ```
 
-Codex is never asked to agree. It gives its opinion **before** seeing Claude's,
-and writes tests from the written contract **before** seeing the implementation —
-so passing means the code matches the specification, not that the tests match
-the code.
+**The human is in the loop at every stage, not just at the start.** Codex is
+never asked to agree: it gives its opinion *before* seeing Claude's, and writes
+tests from the written contract *before* seeing the implementation — so passing
+means the code matches the specification, not that the tests match the code. The
+two opinions then go back to the human side by side, and the approach that gets
+built is the one chosen from that comparison, usually after a few rounds.
+
+**The write-up is directed, not generated.** The findings document went through
+many passes of exactly this kind: the human sets the through-line and the
+emphasis, cuts what over-explains, and challenges claims that outrun the
+evidence; Claude drafts, re-reads every number against the result files, and
+says plainly what it could not verify.
 
 ### The rules were written as the work went
 
