@@ -9,22 +9,11 @@ whether it will produce dopaminergic neurons — early enough to act on it?
 **Short answer: yes at D11 (ROC-AUC 0.906), and by D30 the outcome is largely
 already determined.**
 
-Two day-11 features carry that prediction, and they are not equally
-interpretable:
-
-- **More neuroblasts at day 11 → fewer dopaminergic neurons at day 52**
-  (`phat_NB`, ρ = −0.554). Lines that have already started making neurons by
-  day 11 do worse. This is the cleanest signal in the model: almost none of its
-  variation across lines tracks which differentiation run a line went through
-  (pool η² = 0.035), so it is the one most likely to mean the same thing in
-  another lab.
-- **`PC3` contributes the most of any single feature** (mean |SHAP| 1.40) and is
-  an expression axis loaded with ribosome biogenesis, nucleotide and serine
-  synthesis, and S-phase genes — a cell-growth programme. **But it is also the
-  most run-associated feature in the model** (pool η² = 0.832), which is exactly
-  what a growth-rate axis would look like if it were tracking culture conditions
-  rather than the cell line. It predicts well within this study; it should not
-  be read as biology. See [FINDINGS.md](FINDINGS.md#4-day-11--which-features-predict-and-what-they-suggest).
+**What drives it at day 11 is premature neurogenesis:** lines that have already
+started making neurons by day 11 go on to yield fewer dopaminergic neurons at
+day 52. The neuroblast fraction shows this by counting cells; `PC2`, a proneural
+expression axis, shows the same thing from genes alone — two independent
+measurements landing on one answer.
 
 Full write-ups: **[FINDINGS.md](FINDINGS.md)** (results + literature context) ·
 [`modeling/METHODS.md`](modeling/METHODS.md) (methods) ·
