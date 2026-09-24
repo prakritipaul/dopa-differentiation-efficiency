@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project status
 
 Predicting D52 dopaminergic differentiation efficiency from D11 single-cell
-features across 136 iPSC lines (Jerber et al. 2021). Headline outcome is
+features across 136 iPSC lines (Jerber et al. 2021). The outcome is
 DA/all D52 cells; the earlier DA+Sert analysis is retained as an appendix. See `README.md` for the
 overview, `FINDINGS.md` for results, `modeling/METHODS.md` for methods.
 
@@ -31,6 +31,11 @@ Python version is pinned via `.python-version` to 3.11.
 - `metadata_eda/` — EDA outputs, organised into `cohort/ pca/ proportions/ qc/ technical/ plots/`.
 - `eda/0NN_*.py` — numbered EDA scripts, run in order. Not covered by tests (they stream multi-GB h5 files); their output paths are checked statically in `modeling/tests/test_imports.py`.
 - `data_paths.py` — single home for the h5 locations, overridable with `JERBER_DATA_DIR`.
+- `.claude/skills/pluricon-docs/` — how to write `README.md`, `FINDINGS.md` and
+  `modeling/METHODS.md`. **Invoke it for any edit to those files.** It defers to
+  the global `scientific-writeup` skill for the craft. Every writing rule is
+  stated in one of those two skills and nowhere else — do not copy any of them
+  into this file, not even as a summary of what they cover.
 
 ## Planning workflow: get Codex's second opinion
 
