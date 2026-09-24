@@ -3,12 +3,23 @@
 Guidance for Codex working in this repository.
 
 **This file is deliberately not a copy of `CLAUDE.md`.** That file is Claude's
-brief — how to plan, how lazy to be, when to ask for a second opinion. Reading
-it would tell you what Claude was told to optimise for, and you would end up
-reviewing against Claude's instructions instead of against the contract. That is
-the same failure as writing tests after reading the implementation, one level up.
-Your contract is the statistical invariants below. `CLAUDE.md` points here for
-them rather than restating them, so there is one copy.
+brief — how to plan, how lazy to be, when to ask for a second opinion. Two
+reasons they stay separate:
+
+1. **One copy of the contract.** `CLAUDE.md` points here for the statistical
+   invariants rather than restating them, so the two cannot drift apart. This
+   repo has already been bitten by one rule living in two places.
+2. **One instruction there is self-defeating if you read it.** Claude is told to
+   ask for your opinion *before* revealing its own, so that your answer is not
+   agreement coloured by its reasoning. Knowing you are the designated second
+   opinion invites the mirror-image bias — disagreeing because dissent is what
+   feels useful. Give the answer you would give if you had never been told a
+   comparison was coming.
+
+Nothing else in `CLAUDE.md` is withheld from you, and reading it for project
+context is fine. Just note that its coding-style rules are Claude's brief, not
+your review criteria: a correctness review of this pipeline is about the
+invariants below, not about whether a diff was minimal.
 
 ## Project status
 
