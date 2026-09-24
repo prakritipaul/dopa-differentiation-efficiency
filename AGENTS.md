@@ -87,8 +87,24 @@ written after reading the code inherit its assumptions and will confirm a
 wrong pipeline.
 
 **The contract here is statistical, not just I/O.** A test asserting a
-function returns the right shape is nearly worthless. The invariants that
-matter:
+function returns the right shape is nearly worthless — a shape check passes
+identically whether the PCA basis was fit on training lines only or on all 136.
+
+> **What "statistical invariant" means here.** A property that must hold for a
+> reported number to estimate the quantity its name claims. Violating one does
+> not produce an error or an impossible value; it produces a number of the right
+> type and a plausible magnitude that is no longer an estimate of what the label
+> says. Break invariant 1 and ROC-AUC 0.906 stops being an out-of-sample
+> forecast and becomes an optimistically biased in-sample one — same range, same
+> type, different meaning. They are *invariants* because they must hold on every
+> fold, every repeat and every variant, not be demonstrated once.
+>
+> Items 4 and 5 below are data-plumbing properties rather than statistical ones
+> in themselves; they are on this list because their consequences are
+> statistical — a duplicated join silently reweights lines, and a variant flag
+> that stops halfway produces a table whose columns come from different bases.
+
+The invariants that matter:
 
 1. No held-out line contributes to any fitted quantity — the HVG/PCA basis,
    scaler statistics, or pool means.
@@ -107,8 +123,37 @@ but not `load_full_fit_features()`.
 **Failures here are usually silent.** Most defects in this repo do not raise —
 they produce a plausible, non-crashing, wrong number that lands in a results
 table. Prefer oracle tests: construct input whose correct answer is known
-independently and check the pipeline recovers it. Comparing against recorded
-outputs only proves the code is deterministic.
+independently and check the pipeline recovers it.
+
+### Where an oracle's "correct answer" comes from
+
+**Independently means: known without executing the code under test.** You are
+not looking the answer up anywhere. You derive it, or you force it by
+construction. Five sources, none of which is the implementation:
+
+| source | how it yields a known answer | example in this repo |
+|---|---|---|
+| **Deduction from the invariant** | the invariant's own logic implies an observable equality | invariant 1 says no fitted quantity may depend on a held-out line, so perturbing that line's expression must leave training coordinates *unchanged* |
+| **Construction / symmetry** | build two inputs the spec forces to agree, or to differ | `test_progenitor_balance_removes_target_magnitude_oracle` — see below |
+| **Counting** | the answer is an integer you can state in advance | LOCO has exactly one fold per line, each holds out exactly one, and the union of held-out lines equals the whole cohort — no cohort size needs to be known |
+| **Linear algebra** | a mathematical fact about the design | 7 compositional types must give a full-rank 6-column model matrix, checked with `matrix_rank` |
+| **An independent implementation** | a separate computation of the same thing | `proportion_cols` must reproduce the literal pre-refactor D11 constants |
+
+The construction case is the one worth studying, because it shows you can test
+a transform without knowing what its output *should be*. `_variant_input()`
+builds two lines with the **same relative balance** among the five progenitor
+types (1:2:3:4:5) but very different non-target mass (0.9 against 0.2, with
+DA+Sert at 0.10 against 0.80). The contract says the progenitor-balance variant
+removes the *magnitude* of maturation, not just the DA and Sert columns.
+Therefore two lines differing only in that magnitude must come out identical —
+and the test asserts exactly that, to 1e-12, without ever stating what the
+correct proportions are. Drop the columns without renormalising and line `a`
+keeps 0.9 of its mass while `b` keeps 0.2, so the rows differ and the test
+fails.
+
+**What is not an oracle: this pipeline's own saved output.** Comparing against
+recorded results only proves the code is deterministic, and a leaking pipeline
+is perfectly deterministic.
 
 **Do not weaken a test to make it pass.** If a test fails, decide whether the
 code is wrong, the test is wrong, or the requirement is ambiguous — and say
